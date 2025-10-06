@@ -13,14 +13,25 @@ class AuthController extends Controller
 {
     public function register(Request $request)
     {
+       
+
         $validator = Validator::make($request->all(), [
-            'username' => 'required|string|min:3|max:255|unique:users',
-            'email' => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:6|confirmed',
-            'firstname' => 'required|string|min:2|max:255',
-            'lastname' => 'required|string|min:2|max:255',
-            'referral_code' => 'sometimes|string|exists:users,referral_code',
-        ]);
+        'username' => 'required|string|min:3|max:255|unique:users',
+        'email' => 'required|string|email|max:255|unique:users',
+        'password' => 'required|string|min:6', // removed confirmed
+        'firstname' => 'required|string|min:2|max:255',
+        'lastname' => 'required|string|min:2|max:255',
+        // 'referral_code' => 'sometimes|string|exists:users,referral_code',
+    ]);
+
+    // Add manual password confirmation check
+    if ($request->password !== $request->password_confirmation) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Validation failed. Please check your input.',
+            'errors' => ['password' => ['The password confirmation does not match.']]
+        ], 422);
+    }
 
         if ($validator->fails()) {
             return response()->json([
