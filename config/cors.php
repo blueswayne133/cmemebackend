@@ -1,10 +1,12 @@
+<?php
+
 return [
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
 
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [
-        'http://localhost:5173',   // local vite dev
+        'http://localhost:5173', // local vite dev
         'https://cmeme.thspace.io' // production react domain
     ],
 
