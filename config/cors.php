@@ -1,14 +1,21 @@
 <?php
 
 return [
-    'paths' => ['api/*', 'sanctum/csrf-cookie', 'login', 'logout', 'register'],
+    'paths' => [
+        'api/*', 
+        'sanctum/csrf-cookie', 
+        'login',
+        'logout', 
+        'register',
+        'user'
+    ],
 
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [
         'http://localhost:5173',
-        'https://www.cmeme.app',  
-        'https://cmeme.thspace.io'
+        'https://www.cmeme.app',  // Your frontend domain
+        'https://cmeme.app'       // Also allow without www
     ],
 
     'allowed_origins_patterns' => [],
