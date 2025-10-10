@@ -25,6 +25,9 @@ return new class extends Migration
             $table->foreignId('referred_by')->nullable()->constrained('users');
             $table->decimal('token_balance', 15, 8)->default(0);
             $table->decimal('usdc_balance', 15, 8)->default(0);
+            $table->decimal('referral_usdc_balance', 10, 2)->default(0);
+            $table->decimal('referral_token_balance', 10, 2)->default(0);
+            $table->boolean('can_claim_referral_usdc')->default(false);
             $table->integer('mining_streak')->default(0);
             $table->timestamp('last_mining_at')->nullable();
             $table->rememberToken();

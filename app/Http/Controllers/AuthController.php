@@ -7,24 +7,22 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB; 
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
-    public function register(Request $request)
-    {
-       
 
-        $validator = Validator::make($request->all(), [
+    public function register(Request $request)
+{
+    $validator = Validator::make($request->all(), [
         'username' => 'required|string|min:3|max:255|unique:users',
         'email' => 'required|string|email|max:255|unique:users',
-        'password' => 'required|string|min:6', // removed confirmed
+        'password' => 'required|string|min:6',
         'firstname' => 'required|string|min:2|max:255',
         'lastname' => 'required|string|min:2|max:255',
-        // 'referral_code' => 'sometimes|string|exists:users,referral_code',
     ]);
 
-    // Add manual password confirmation check
     if ($request->password !== $request->password_confirmation) {
         return response()->json([
             'status' => 'error',
@@ -33,43 +31,55 @@ class AuthController extends Controller
         ], 422);
     }
 
-        if ($validator->fails()) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Validation failed. Please check your input.',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        $referredBy = null;
-        if ($request->referral_code) {
-            $referredBy = User::where('referral_code', $request->referral_code)->first();
-        }
-
-        $user = User::create([
-            'username' => $request->username,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'first_name' => $request->firstname,
-            'last_name' => $request->lastname,
-            'uid' => 'UID' . str_pad(random_int(1, 999999999), 9, '0', STR_PAD_LEFT),
-            'referral_code' => Str::random(8),
-            'referred_by' => $referredBy?->id,
-            'wallet_address' => '0x' . Str::random(40),
-        ]);
-
-        $token = $user->createToken('auth-token')->plainTextToken;
-
+    if ($validator->fails()) {
         return response()->json([
-            'status' => 'success',
-            'message' => 'Registration successful!',
-            'data' => [
-                'user' => $user,
-                'token' => $token,
-            ]
-        ], 201);
+            'status' => 'error',
+            'message' => 'Validation failed. Please check your input.',
+            'errors' => $validator->errors()
+        ], 422);
     }
 
+    $referredBy = null;
+    if ($request->referral_code) {
+        $referredBy = User::where('referral_code', $request->referral_code)->first();
+        
+        // Add referral rewards if referrer exists
+        if ($referredBy) {
+        DB::transaction(function () use ($referredBy) {
+         $referredBy->increment('referral_usdc_balance', 0.1);
+         $referredBy->increment('token_balance', 0.5);
+         $referredBy->increment('referral_token_balance', 0.5);
+       });
+
+        }
+    }
+
+    $user = User::create([
+        'username' => $request->username,
+        'email' => $request->email,
+        'password' => Hash::make($request->password),
+        'first_name' => $request->firstname,
+        'last_name' => $request->lastname,
+        'uid' => str_pad(random_int(1, 999999999), 9, '0', STR_PAD_LEFT),
+        'referral_code' => Str::random(8),
+        'referred_by' => $referredBy?->id,
+        'wallet_address' => '0x' . Str::random(40),
+        'referral_usdc_balance' => 0,
+        'referral_token_balance' => 0,
+    ]);
+
+    $token = $user->createToken('auth-token')->plainTextToken;
+
+    return response()->json([
+        'status' => 'success',
+        'message' => 'Registration successful!',
+        'data' => [
+            'user' => $user,
+            'token' => $token,
+        ]
+    ], 201);
+}
+   
     public function login(Request $request)
     {
         $request->validate([

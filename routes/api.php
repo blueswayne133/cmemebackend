@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\ReferralController;
 use App\Http\Controllers\MiningController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\WalletController;
@@ -13,7 +14,12 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', [AuthController::class, 'user']);
     Route::post('/logout', [AuthController::class, 'logout']);
-
+     
+    // Referral routes
+    Route::prefix('referrals')->group(function () {
+    Route::get('/stats', [ReferralController::class, 'getReferralStats']);
+    Route::post('/claim', [ReferralController::class, 'claimReferralRewards']);
+    });
     // // Mining routes
     // Route::prefix('mining')->group(function () {
     //     Route::post('/start', [MiningController::class, 'startMining']);
