@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ReferralController;
+use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\KycController;
 use App\Http\Controllers\MiningController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\WalletController;
@@ -14,7 +16,18 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', [AuthController::class, 'user']);
     Route::post('/logout', [AuthController::class, 'logout']);
-     
+
+    Route::prefix('profile')->group(function () {
+    Route::get('/', [ProfileController::class, 'getProfile']);
+      });
+
+ // kyc routes
+    Route::prefix('kyc')->group(function () {
+    Route::post('/submit', [KycController::class, 'submitKyc']);
+    Route::get('/status', [KycController::class, 'getKycStatus']);
+    Route::get('/history', [KycController::class, 'getKycHistory']);
+    
+     });
     // Referral routes
     Route::prefix('referrals')->group(function () {
     Route::get('/stats', [ReferralController::class, 'getReferralStats']);

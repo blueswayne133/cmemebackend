@@ -1,4 +1,5 @@
 <?php
+// app/Models/User.php
 
 namespace App\Models;
 
@@ -29,6 +30,10 @@ class User extends Authenticatable
         'referral_usdc_balance', 
         'referral_token_balance', 
         'can_claim_referral_usdc',
+        // KYC fields
+        'kyc_status',
+        'current_kyc_id',
+        'kyc_verified_at',
     ];
 
     protected $hidden = [
@@ -43,6 +48,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'referral_usdc_balance' => 'decimal:2',
             'referral_cmeme_balance' => 'decimal:2',
+            'kyc_verified_at' => 'datetime',
         ];
     }
 
@@ -56,5 +62,72 @@ class User extends Authenticatable
     public function referrer()
     {
         return $this->belongsTo(User::class, 'referred_by');
+    }
+
+    // KYC Relationships
+    public function kycVerifications()
+    {
+        return $this->hasMany(KycVerification::class);
+    }
+
+    public function currentKyc()
+    {
+        return $this->belongsTo(KycVerification::class, 'current_kyc_id');
+    }
+
+    // KYC Status Checkers
+    public function isKycPending(): bool
+    {
+        return $this->kyc_status === 'pending';
+    }
+
+    public function isKycVerified(): bool
+    {
+        return $this->kyc_status === 'verified';
+    }
+
+    public function isKycRejected(): bool
+    {
+        return $this->kyc_status === 'rejected';
+    }
+
+    public function hasSubmittedKyc(): bool
+    {
+        return $this->kyc_status !== 'not_submitted';
+    }
+
+    public function getLatestKyc()
+    {
+        return $this->kycVerifications()->latest()->first();
+    }
+
+    /**
+     * Update KYC status and link current KYC
+     */
+    public function updateKycStatus(string $status, KycVerification $kyc = null): bool
+    {
+        $updateData = ['kyc_status' => $status];
+        
+        if ($kyc) {
+            $updateData['current_kyc_id'] = $kyc->id;
+        }
+
+        if ($status === 'verified') {
+            $updateData['kyc_verified_at'] = now();
+            $updateData['is_verified'] = true;
+        }
+
+        return $this->update($updateData);
+    }
+
+    /**
+     * Check if user can submit new KYC
+     */
+    public function canSubmitKyc(): bool
+    {
+        // Allow new submission if rejected or if no current submission exists
+        return $this->kyc_status === 'rejected' || 
+               $this->kyc_status === 'not_submitted' ||
+               ($this->currentKyc && $this->currentKyc->isRejected());
     }
 }

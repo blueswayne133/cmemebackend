@@ -61,7 +61,7 @@ class AuthController extends Controller
         'first_name' => $request->firstname,
         'last_name' => $request->lastname,
         'uid' => str_pad(random_int(1, 999999999), 9, '0', STR_PAD_LEFT),
-        'referral_code' => Str::random(8),
+        'referral_code' => 'cmeme' . Str::random(2),
         'referred_by' => $referredBy?->id,
         'wallet_address' => '0x' . Str::random(40),
         'referral_usdc_balance' => 0,
