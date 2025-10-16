@@ -4,7 +4,8 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ReferralController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\KycController;
-use App\Http\Controllers\MiningController;
+use App\Http\Controllers\P2PController;
+use App\Http\Controllers\LeaderboardController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\WalletController;
 use Illuminate\Http\Request;
@@ -33,6 +34,28 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/stats', [ReferralController::class, 'getReferralStats']);
     Route::post('/claim', [ReferralController::class, 'claimReferralRewards']);
     });
+
+
+    // P2P Trading routes
+    Route::prefix('p2p')->group(function () {
+    Route::get('/trades', [P2PController::class, 'getTrades']);
+    Route::post('/trades', [P2PController::class, 'createTrade']);
+    Route::get('/trades/user', [P2PController::class, 'getUserTrades']);
+    Route::get('/trades/{tradeId}', [P2PController::class, 'getTradeDetails']);
+    Route::post('/trades/{tradeId}/initiate', [P2PController::class, 'initiateTrade']);
+    Route::post('/trades/{tradeId}/upload-proof', [P2PController::class, 'uploadPaymentProof']);
+    Route::post('/trades/{tradeId}/confirm-payment', [P2PController::class, 'confirmPayment']);
+    Route::post('/trades/{tradeId}/cancel', [P2PController::class, 'cancelTrade']);
+    Route::post('/trades/{tradeId}/dispute', [P2PController::class, 'createDispute']);
+    });
+
+
+
+    Route::prefix('leaderboard')->group(function () {
+    Route::get('/', [LeaderboardController::class, 'getLeaderboard']);
+    });
+
+    
     // // Mining routes
     // Route::prefix('mining')->group(function () {
     //     Route::post('/start', [MiningController::class, 'startMining']);

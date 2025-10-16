@@ -130,4 +130,44 @@ class User extends Authenticatable
                $this->kyc_status === 'not_submitted' ||
                ($this->currentKyc && $this->currentKyc->isRejected());
     }
+
+// P2P Relationships
+public function p2pTradesAsSeller()
+{
+    return $this->hasMany(P2PTrade::class, 'seller_id');
+}
+
+public function p2pTradesAsBuyer()
+{
+    return $this->hasMany(P2PTrade::class, 'buyer_id');
+}
+
+public function p2pTradeProofs()
+{
+    return $this->hasMany(P2PTradeProof::class, 'uploaded_by');
+}
+
+public function p2pDisputesRaised()
+{
+    return $this->hasMany(P2PDispute::class, 'raised_by');
+}
+
+// P2P Stats
+public function getP2PCompletedTradesCount()
+{
+    return $this->p2pTradesAsSeller()
+        ->where('status', 'completed')
+        ->count() + 
+        $this->p2pTradesAsBuyer()
+        ->where('status', 'completed')
+        ->count();
+}
+
+public function getP2PSuccessRate()
+{
+    $completed = $this->getP2PCompletedTradesCount();
+    $total = $this->p2pTradesAsSeller()->count() + $this->p2pTradesAsBuyer()->count();
+    
+    return $total > 0 ? round(($completed / $total) * 100, 2) : 100;
+}
 }
