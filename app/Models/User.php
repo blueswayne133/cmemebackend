@@ -170,4 +170,9 @@ public function getP2PSuccessRate()
     
     return $total > 0 ? round(($completed / $total) * 100, 2) : 100;
 }
+
+public function taskProgress()
+{
+    return $this->hasMany(UserTaskProgress::class);
+}
 }

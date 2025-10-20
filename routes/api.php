@@ -55,6 +55,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/', [LeaderboardController::class, 'getLeaderboard']);
     });
 
+    Route::prefix('tasks')->group(function () {
+    Route::get('/', [TaskController::class, 'getTasks']);
+    Route::post('/{task}/complete', [TaskController::class, 'completeTask']);
+});
+
     
     // // Mining routes
     // Route::prefix('mining')->group(function () {
