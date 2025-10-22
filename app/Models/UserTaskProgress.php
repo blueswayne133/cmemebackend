@@ -1,5 +1,4 @@
 <?php
-// app/Models/UserTaskProgress.php
 
 namespace App\Models;
 
@@ -44,5 +43,29 @@ class UserTaskProgress extends Model
     {
         $this->attributes['last_completed_at'] = $value;
         $this->attributes['completion_date'] = $value ? Carbon::parse($value)->toDateString() : null;
+    }
+
+    /**
+     * Scope for today's progress
+     */
+    public function scopeToday($query)
+    {
+        return $query->whereDate('completion_date', today());
+    }
+
+    /**
+     * Scope for specific user
+     */
+    public function scopeForUser($query, $userId)
+    {
+        return $query->where('user_id', $userId);
+    }
+
+    /**
+     * Scope for specific task
+     */
+    public function scopeForTask($query, $taskId)
+    {
+        return $query->where('task_id', $taskId);
     }
 }

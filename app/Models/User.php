@@ -175,4 +175,89 @@ public function taskProgress()
 {
     return $this->hasMany(UserTaskProgress::class);
 }
+
+
+/**
+ * Check if user has connected Twitter
+ */
+public function hasConnectedTwitter(): bool
+{
+    return (bool) $this->twitter_connected;
+}
+
+/**
+ * Check if user has connected Telegram
+ */
+public function hasConnectedTelegram(): bool
+{
+    return (bool) $this->telegram_connected;
+}
+
+/**
+ * Get today's task progress
+ */
+public function getTodayTaskProgress()
+{
+    return $this->taskProgress()
+        ->whereDate('completion_date', today())
+        ->get();
+}
+
+/**
+ * Get completed tasks count for today
+ */
+public function getTodayCompletedTasksCount(): int
+{
+    return $this->taskProgress()
+        ->whereDate('completion_date', today())
+        ->whereHas('task', function ($query) {
+            $query->whereColumn('user_task_progress.attempts_count', '>=', 'tasks.max_attempts_per_day');
+        })
+        ->count();
+}
+
+
+
+
+/**
+ * Relationship with wallet details
+ */
+public function walletDetail()
+{
+    return $this->hasOne(WalletDetail::class);
+}
+
+/**
+ * Check if user has connected wallet
+ */
+public function hasConnectedWallet(): bool
+{
+    return $this->walletDetail && $this->walletDetail->is_connected;
+}
+
+/**
+ * Check if user has claimed wallet bonus
+ */
+public function hasClaimedWalletBonus(): bool
+{
+    return $this->walletDetail && $this->walletDetail->bonus_claimed;
+}
+
+/**
+ * Get connected wallet
+ */
+public function getConnectedWallet()
+{
+    return $this->walletDetail()->connected()->first();
+}
+
+/**
+ * Get wallet bonus eligibility
+ */
+public function isEligibleForWalletBonus(): bool
+{
+    return $this->walletDetail && $this->walletDetail->isEligibleForBonus();
+}
+
+
 }

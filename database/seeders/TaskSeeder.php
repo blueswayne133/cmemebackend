@@ -1,14 +1,17 @@
 <?php
-// database/seeders/TaskSeeder.php
 
 namespace Database\Seeders;
 
 use App\Models\Task;
 use Illuminate\Database\Seeder;
+use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 
 class TaskSeeder extends Seeder
 {
-    public function run()
+    /**
+     * Run the database seeds.
+     */
+    public function run(): void
     {
         $tasks = [
             [
@@ -22,6 +25,7 @@ class TaskSeeder extends Seeder
                 'sort_order' => 1,
                 'is_active' => true,
                 'is_available' => true,
+                'metadata' => ['category' => 'daily']
             ],
             [
                 'title' => 'Daily Streak Claim',
@@ -30,10 +34,11 @@ class TaskSeeder extends Seeder
                 'reward_type' => 'CMEME',
                 'type' => 'daily_streak',
                 'max_attempts_per_day' => 1,
-                'cooldown_minutes' => 1440, // 24 hours
+                'cooldown_minutes' => 1440,
                 'sort_order' => 2,
                 'is_active' => true,
                 'is_available' => true,
+                'metadata' => ['category' => 'daily']
             ],
             [
                 'title' => 'Connect X (Twitter) Account',
@@ -46,6 +51,7 @@ class TaskSeeder extends Seeder
                 'sort_order' => 3,
                 'is_active' => true,
                 'is_available' => true,
+                'metadata' => ['category' => 'social']
             ],
             [
                 'title' => 'Connect Telegram Account',
@@ -58,7 +64,21 @@ class TaskSeeder extends Seeder
                 'sort_order' => 4,
                 'is_active' => true,
                 'is_available' => true,
+                'metadata' => ['category' => 'social']
             ],
+            [
+                'title' => 'Connect Wallet',
+                'description' => 'Connect your Base Network wallet to earn bonus tokens.',
+                'reward_amount' => 2500,
+                'reward_type' => 'CMEME',
+                'type' => 'connect_wallet',
+                'max_attempts_per_day' => 1,
+                'cooldown_minutes' => 0,
+                'sort_order' => 5,
+                'is_active' => true,
+                'is_available' => true,
+                'metadata' => ['category' => 'wallet']
+            ]
         ];
 
         foreach ($tasks as $task) {

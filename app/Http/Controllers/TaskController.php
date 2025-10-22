@@ -1,14 +1,14 @@
 <?php
-// app/Http/Controllers/TaskController.php
 
 namespace App\Http\Controllers;
 
 use App\Models\Task;
 use App\Models\User;
 use App\Models\Transaction;
+use App\Models\UserTaskProgress;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 class TaskController extends Controller
@@ -16,61 +16,67 @@ class TaskController extends Controller
     public function getTasks(Request $request)
     {
         $user = $request->user();
-        $today = Carbon::today()->toDateString();
         
-        $tasks = Task::where('is_active', true)
-            ->orderBy('sort_order')
-            ->get()
-            ->map(function ($task) use ($user, $today) {
-                $userTask = $user->taskProgress()
-                    ->where('task_id', $task->id)
-                    ->where('completion_date', $today)
-                    ->first();
-
-                return [
-                    'id' => $task->id,
-                    'title' => $task->title,
-                    'description' => $task->description,
-                    'reward' => (float) $task->reward_amount,
-                    'reward_type' => $task->reward_type,
-                    'type' => $task->type,
-                    'max_attempts' => $task->max_attempts_per_day,
-                    'current_attempts' => $userTask ? $userTask->attempts_count : 0,
-                    'is_available' => $task->is_available,
-                    'is_completed' => $userTask ? $userTask->attempts_count >= $task->max_attempts_per_day : false,
-                    'cooldown_minutes' => $task->cooldown_minutes,
-                ];
-            });
-
-        // If no tasks in database, return default tasks
-        if ($tasks->isEmpty()) {
-            $tasks = collect($this->getDefaultTasks())->map(function ($task) use ($user, $today) {
-                $userTask = $user->taskProgress()
-                    ->where('task_type', $task['type'])
-                    ->where('completion_date', $today)
-                    ->first();
-
-                return [
-                    'id' => $task['id'],
-                    'title' => $task['title'],
-                    'description' => $task['description'],
-                    'reward' => $task['reward'],
-                    'reward_type' => $task['reward_type'],
-                    'type' => $task['type'],
-                    'max_attempts' => $task['max_attempts'],
-                    'current_attempts' => $userTask ? $userTask->attempts_count : 0,
-                    'is_available' => true,
-                    'is_completed' => $userTask ? $userTask->attempts_count >= $task['max_attempts'] : false,
-                    'cooldown_minutes' => $task['cooldown_minutes'],
-                ];
-            });
+        Log::info('Fetching tasks for user: ' . $user->id);
+        
+        // Debug: Check if tasks exist in database
+        $taskCount = Task::count();
+        Log::info('Total tasks in database: ' . $taskCount);
+        
+        $tasksFromDB = Task::active()
+            ->get();
+            
+        Log::info('Tasks retrieved from database: ' . $tasksFromDB->count());
+        
+        if ($tasksFromDB->isEmpty()) {
+            Log::warning('No tasks found in database!');
         }
+
+        $tasks = $tasksFromDB->map(function ($task) use ($user) {
+            $userTask = $task->taskProgress()
+                ->where('user_id', $user->id)
+                ->whereDate('completion_date', today())
+                ->first();
+
+            $currentAttempts = $userTask ? $userTask->attempts_count : 0;
+            $isCompleted = $currentAttempts >= $task->max_attempts_per_day;
+            $remainingAttempts = max(0, $task->max_attempts_per_day - $currentAttempts);
+            $canComplete = $task->canUserComplete($user);
+
+            $taskData = [
+                'id' => $task->id,
+                'title' => $task->title,
+                'description' => $task->description,
+                'reward' => (float) $task->reward_amount,
+                'reward_type' => $task->reward_type,
+                'type' => $task->type,
+                'max_attempts' => $task->max_attempts_per_day,
+                'current_attempts' => $currentAttempts,
+                'remaining_attempts' => $remainingAttempts,
+                'is_available' => $task->is_available,
+                'is_completed' => $isCompleted,
+                'can_complete' => $canComplete,
+                'cooldown_minutes' => $task->cooldown_minutes,
+                'sort_order' => $task->sort_order,
+            ];
+            
+            Log::info('Task processed: ' . $task->title, $taskData);
+            
+            return $taskData;
+        });
+
+        Log::info('Final tasks array count: ' . $tasks->count());
 
         return response()->json([
             'status' => 'success',
             'message' => 'Tasks retrieved successfully',
             'data' => [
-                'tasks' => $tasks
+                'tasks' => $tasks,
+                'debug' => [ // Add debug info temporarily
+                    'total_tasks_in_db' => $taskCount,
+                    'tasks_retrieved' => $tasksFromDB->count(),
+                    'tasks_processed' => $tasks->count()
+                ]
             ]
         ]);
     }
@@ -78,125 +84,128 @@ class TaskController extends Controller
     public function completeTask(Request $request, $taskId)
     {
         $user = $request->user();
-        $today = Carbon::today()->toDateString();
 
-        DB::transaction(function () use ($user, $taskId, $request, $today) {
-            // For default tasks (when no database entry exists)
-            if ($taskId <= 4) {
-                $this->handleDefaultTask($user, $taskId, $request, $today);
-                return;
-            }
+        try {
+            DB::transaction(function () use ($user, $taskId, $request) {
+                $task = Task::active()
+                    ->available()
+                    ->findOrFail($taskId);
 
-            // For database tasks
-            $task = Task::where('id', $taskId)
-                ->where('is_active', true)
-                ->firstOrFail();
-
-            $userTask = $user->taskProgress()
-                ->where('task_id', $task->id)
-                ->where('completion_date', $today)
-                ->first();
-
-            // Check if task can be completed
-            if ($userTask && $userTask->attempts_count >= $task->max_attempts_per_day) {
-                throw new \Exception('Daily limit reached for this task.');
-            }
-
-            // Check cooldown
-            if ($userTask && $task->cooldown_minutes > 0) {
-                $cooldownEnd = $userTask->last_completed_at->addMinutes($task->cooldown_minutes);
-                if (Carbon::now()->lt($cooldownEnd)) {
-                    throw new \Exception('Task is on cooldown. Please wait.');
+                // Check if user can complete the task
+                if (!$task->canUserComplete($user)) {
+                    throw new \Exception('You cannot complete this task at this time. Check daily limits or cooldown.');
                 }
-            }
 
-            // Update or create task progress
-            if ($userTask) {
-                $userTask->increment('attempts_count');
-                $userTask->update(['last_completed_at' => Carbon::now()]);
-            } else {
-                $user->taskProgress()->create([
-                    'task_id' => $task->id,
-                    'attempts_count' => 1,
-                    'completion_date' => $today,
-                    'last_completed_at' => Carbon::now(),
-                ]);
-            }
+                // Handle specific task types with additional validation
+                $validationError = $this->validateTaskCompletion($task, $user);
+                if ($validationError) {
+                    throw new \Exception($validationError);
+                }
 
-            // Reward user
-            $this->rewardUser($user, $task->reward_amount, $task->reward_type, $task->title);
-        });
+                // Get or create today's progress
+                $userTask = UserTaskProgress::where('user_id', $user->id)
+                    ->where('task_id', $task->id)
+                    ->whereDate('completion_date', today())
+                    ->first();
 
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Task completed successfully!',
-            'data' => [
-                'user' => $user->fresh()
-            ]
-        ]);
+                if ($userTask) {
+                    // Update existing progress
+                    $userTask->increment('attempts_count');
+                    $userTask->update(['last_completed_at' => now()]);
+                } else {
+                    // Create new progress
+                    $userTask = UserTaskProgress::create([
+                        'user_id' => $user->id,
+                        'task_id' => $task->id,
+                        'task_type' => $task->type,
+                        'attempts_count' => 1,
+                        'completion_date' => today(),
+                        'last_completed_at' => now(),
+                    ]);
+                }
+
+                // Reward user
+                $this->rewardUser($user, $task->reward_amount, $task->reward_type, $task->title);
+
+                // Update user specific fields for certain tasks
+                $this->updateUserForTask($task, $user);
+            });
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Task completed successfully!',
+                'data' => [
+                    'user' => $user->fresh()
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ], 400);
+        }
     }
 
-    private function handleDefaultTask($user, $taskId, $request, $today)
+    /**
+     * Validate task-specific completion requirements
+     */
+    private function validateTaskCompletion(Task $task, User $user): ?string
     {
-        $defaultTasks = $this->getDefaultTasks();
-        $task = collect($defaultTasks)->firstWhere('id', $taskId);
-
-        if (!$task) {
-            throw new \Exception('Task not found.');
-        }
-
-        $userTask = $user->taskProgress()
-            ->where('task_type', $task['type'])
-            ->where('completion_date', $today)
-            ->first();
-
-        // Check daily limits
-        if ($userTask && $userTask->attempts_count >= $task['max_attempts']) {
-            throw new \Exception('Daily limit reached for this task.');
-        }
-
-        // Handle specific task types
-        switch ($task['type']) {
+        switch ($task->type) {
             case 'connect_twitter':
                 if ($user->twitter_connected) {
-                    throw new \Exception('Twitter account already connected.');
+                    return 'Twitter account already connected.';
                 }
-                // Simulate Twitter connection
-                $user->update(['twitter_connected' => true]);
                 break;
 
             case 'connect_telegram':
                 if ($user->telegram_connected) {
-                    throw new \Exception('Telegram account already connected.');
+                    return 'Telegram account already connected.';
                 }
-                // Simulate Telegram connection
-                $user->update(['telegram_connected' => true]);
+                break;
+
+            case 'connect_wallet':
+                if (!$user->hasConnectedWallet()) {
+                    return 'Please connect your wallet first.';
+                }
+                if ($user->hasClaimedWalletBonus()) {
+                    return 'Wallet bonus already claimed.';
+                }
                 break;
         }
 
-        // Update task progress
-        if ($userTask) {
-            $userTask->increment('attempts_count');
-            $userTask->update(['last_completed_at' => Carbon::now()]);
-        } else {
-            $user->taskProgress()->create([
-                'task_type' => $task['type'],
-                'attempts_count' => 1,
-                'completion_date' => $today,
-                'last_completed_at' => Carbon::now(),
-            ]);
-        }
-
-        // Reward user
-        $this->rewardUser($user, $task['reward'], $task['reward_type'], $task['title']);
+        return null;
     }
 
-    private function rewardUser($user, $amount, $type, $description)
+    /**
+     * Update user fields for specific tasks
+     */
+    private function updateUserForTask(Task $task, User $user): void
+    {
+        switch ($task->type) {
+            case 'connect_twitter':
+                $user->update(['twitter_connected' => true]);
+                break;
+
+            case 'connect_telegram':
+                $user->update(['telegram_connected' => true]);
+                break;
+
+            case 'connect_wallet':
+                // Wallet bonus is handled in WalletController
+                break;
+        }
+    }
+
+    /**
+     * Reward user for completing task
+     */
+    private function rewardUser(User $user, $amount, $type, $description): void
     {
         if ($type === 'CMEME') {
             $user->increment('token_balance', $amount);
             
-            // Create transaction record
             Transaction::create([
                 'user_id' => $user->id,
                 'type' => Transaction::TYPE_EARNING,
@@ -212,49 +221,36 @@ class TaskController extends Controller
         }
     }
 
-    private function getDefaultTasks()
+    /**
+     * Get user task statistics
+     */
+    public function getTaskStats(Request $request)
     {
-        return [
-            [
-                'id' => 1,
-                'title' => 'Watch Ads',
-                'description' => 'Watch ads to earn CMEME tokens. Up to 60 times daily.',
-                'reward' => 0.05,
-                'reward_type' => 'CMEME',
-                'type' => 'watch_ads',
-                'max_attempts' => 60,
-                'cooldown_minutes' => 0,
-            ],
-            [
-                'id' => 2,
-                'title' => 'Daily Streak Claim',
-                'description' => 'Claim your daily streak bonus.',
-                'reward' => 0.5,
-                'reward_type' => 'CMEME',
-                'type' => 'daily_streak',
-                'max_attempts' => 1,
-                'cooldown_minutes' => 1440, // 24 hours
-            ],
-            [
-                'id' => 3,
-                'title' => 'Connect X (Twitter) Account',
-                'description' => 'Connect your X (Twitter) account to earn rewards.',
-                'reward' => 5,
-                'reward_type' => 'CMEME',
-                'type' => 'connect_twitter',
-                'max_attempts' => 1,
-                'cooldown_minutes' => 0,
-            ],
-            [
-                'id' => 4,
-                'title' => 'Connect Telegram Account',
-                'description' => 'Connect your Telegram account to earn rewards.',
-                'reward' => 5,
-                'reward_type' => 'CMEME',
-                'type' => 'connect_telegram',
-                'max_attempts' => 1,
-                'cooldown_minutes' => 0,
-            ],
-        ];
+        $user = $request->user();
+        $today = today();
+
+        $completedToday = UserTaskProgress::where('user_id', $user->id)
+            ->whereDate('completion_date', $today)
+            ->count();
+
+        $totalEarnedToday = UserTaskProgress::where('user_id', $user->id)
+            ->whereDate('completion_date', $today)
+            ->with('task')
+            ->get()
+            ->sum(function ($progress) {
+                return $progress->attempts_count * $progress->task->reward_amount;
+            });
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'completed_today' => $completedToday,
+                'total_earned_today' => $totalEarnedToday,
+                'date' => $today->toDateString(),
+            ]
+        ]);
     }
+
+
+    
 }

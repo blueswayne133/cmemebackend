@@ -55,9 +55,19 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/', [LeaderboardController::class, 'getLeaderboard']);
     });
 
-    Route::prefix('tasks')->group(function () {
+   Route::prefix('tasks')->group(function () {
     Route::get('/', [TaskController::class, 'getTasks']);
     Route::post('/{task}/complete', [TaskController::class, 'completeTask']);
+    Route::get('/stats', [TaskController::class, 'getTaskStats']);
+   });
+
+
+ Route::prefix('wallet')->group(function () {
+    Route::post('/connect', [WalletController::class, 'connectWallet']);
+    Route::post('/update', [WalletController::class, 'updateWallet']);
+    Route::post('/disconnect', [WalletController::class, 'disconnectWallet']);
+    Route::post('/claim-bonus', [WalletController::class, 'claimWalletBonus']);
+    Route::get('/status', [WalletController::class, 'getWalletStatus']);
 });
 
     
