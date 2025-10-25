@@ -15,6 +15,7 @@ class User extends Authenticatable
     protected $fillable = [
         'username',
         'email',
+        'avatar_url',
         'password',
         'first_name',
         'last_name',
@@ -30,10 +31,18 @@ class User extends Authenticatable
         'referral_usdc_balance', 
         'referral_token_balance', 
         'can_claim_referral_usdc',
+        'last_login_at',
         // KYC fields
         'kyc_status',
         'current_kyc_id',
         'kyc_verified_at',
+            'phone',
+    'phone_verified',
+    'two_factor_enabled',
+    'two_factor_type',
+    'two_factor_secret',
+    'backup_codes',
+    'two_factor_enabled_at',
     ];
 
     protected $hidden = [
@@ -49,6 +58,11 @@ class User extends Authenticatable
             'referral_usdc_balance' => 'decimal:2',
             'referral_cmeme_balance' => 'decimal:2',
             'kyc_verified_at' => 'datetime',
+            'phone_verified' => 'boolean',
+        'two_factor_enabled' => 'boolean',
+        'backup_codes' => 'array',
+        'two_factor_enabled_at' => 'datetime',
+         'last_login_at' => 'datetime',
         ];
     }
 
@@ -257,6 +271,79 @@ public function getConnectedWallet()
 public function isEligibleForWalletBonus(): bool
 {
     return $this->walletDetail && $this->walletDetail->isEligibleForBonus();
+}
+
+
+// Add these relationships to User.php
+public function securitySettings()
+{
+    return $this->hasOne(UserSecuritySetting::class);
+}
+
+public function twoFactorCodes()
+{
+    return $this->hasMany(TwoFactorCode::class);
+}
+
+// Add these methods to User.php
+public function hasTwoFactorEnabled(): bool
+{
+    return $this->two_factor_enabled;
+}
+
+public function getTwoFactorMethods(): array
+{
+    if (!$this->securitySettings) {
+        return [];
+    }
+    return $this->securitySettings->getEnabled2FAMethods();
+}
+
+public function hasPhoneVerified(): bool
+{
+    return $this->phone_verified && !empty($this->phone);
+}
+
+public function generateBackupCodes(): array
+{
+    $codes = [];
+    for ($i = 0; $i < 8; $i++) {
+        $codes[] = strtoupper(bin2hex(random_bytes(4))); // 8-character backup codes
+    }
+    
+    $this->update([
+        'backup_codes' => $codes
+    ]);
+    
+    return $codes;
+}
+
+public function useBackupCode(string $code): bool
+{
+    $backupCodes = $this->backup_codes ?? [];
+    $index = array_search($code, $backupCodes);
+    
+    if ($index !== false) {
+        unset($backupCodes[$index]);
+        $this->update(['backup_codes' => array_values($backupCodes)]);
+        return true;
+    }
+    
+    return false;
+}
+
+public function hasBackupCodes(): bool
+{
+    return !empty($this->backup_codes);
+}
+
+protected static function boot()
+{
+    parent::boot();
+
+    static::created(function ($user) {
+        $user->securitySettings()->create();
+    });
 }
 
 

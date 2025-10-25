@@ -13,7 +13,7 @@ return [
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [
-        'http://localhost:5174',
+        'http://localhost:5173',
         'https://www.cmeme.app',  // Your frontend domain
         'https://cmeme.app'       // Also allow without www
     ],

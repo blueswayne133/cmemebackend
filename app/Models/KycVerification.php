@@ -13,22 +13,25 @@ class KycVerification extends Model
 
     protected $fillable = [
         'user_id',
+        'admin_id', // Add this
         'document_type',
         'document_number',
         'document_front_path',
         'document_back_path',
         'status',
-        'rejection_reason',
+        'rejection_reason', // Add this
         'verification_notes',
         'verification_score',
         'verification_details',
         'submitted_at',
         'verified_at',
+        'verified_by_admin_at', // Add this
     ];
 
     protected $casts = [
         'submitted_at' => 'datetime',
         'verified_at' => 'datetime',
+        'verified_by_admin_at' => 'datetime', // Add this
         'verification_score' => 'decimal:2',
         'verification_details' => 'array',
     ];
@@ -39,6 +42,14 @@ class KycVerification extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Relationship with Admin who verified
+     */
+    public function admin(): BelongsTo
+    {
+        return $this->belongsTo(Admin::class);
     }
 
     /**
@@ -116,26 +127,39 @@ class KycVerification extends Model
     }
 
     /**
-     * Mark as verified
+     * Mark as verified by admin
      */
-    public function markAsVerified(string $notes = null): bool
+    public function markAsVerified(int $adminId, string $notes = null): bool
     {
         return $this->update([
             'status' => 'verified',
+            'admin_id' => $adminId,
             'verified_at' => now(),
+            'verified_by_admin_at' => now(),
             'verification_notes' => $notes,
         ]);
     }
 
     /**
-     * Mark as rejected
+     * Mark as rejected by admin
      */
-    public function markAsRejected(string $reason, string $notes = null): bool
+    public function markAsRejected(int $adminId, string $reason, string $notes = null): bool
     {
         return $this->update([
             'status' => 'rejected',
+            'admin_id' => $adminId,
             'rejection_reason' => $reason,
+            'verified_at' => now(),
+            'verified_by_admin_at' => now(),
             'verification_notes' => $notes,
         ]);
+    }
+
+    /**
+     * Check if KYC was verified by admin
+     */
+    public function wasVerifiedByAdmin(): bool
+    {
+        return !is_null($this->admin_id) && !is_null($this->verified_by_admin_at);
     }
 }

@@ -69,7 +69,7 @@ class TaskSeeder extends Seeder
             [
                 'title' => 'Connect Wallet',
                 'description' => 'Connect your Base Network wallet to earn bonus tokens.',
-                'reward_amount' => 2500,
+                'reward_amount' => 0.5,
                 'reward_type' => 'CMEME',
                 'type' => 'connect_wallet',
                 'max_attempts_per_day' => 1,

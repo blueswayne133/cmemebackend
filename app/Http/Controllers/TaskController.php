@@ -43,10 +43,16 @@ class TaskController extends Controller
             $remainingAttempts = max(0, $task->max_attempts_per_day - $currentAttempts);
             $canComplete = $task->canUserComplete($user);
 
+            // Update description for daily streak task to show current streak
+            $description = $task->description;
+            if ($task->type === 'daily_streak') {
+                $description = "Claim your daily streak bonus. Current streak: {$user->mining_streak} days";
+            }
+
             $taskData = [
                 'id' => $task->id,
                 'title' => $task->title,
-                'description' => $task->description,
+                'description' => $description,
                 'reward' => (float) $task->reward_amount,
                 'reward_type' => $task->reward_type,
                 'type' => $task->type,
@@ -127,6 +133,11 @@ class TaskController extends Controller
                 // Reward user
                 $this->rewardUser($user, $task->reward_amount, $task->reward_type, $task->title);
 
+                // Update daily streak for daily_streak task
+                if ($task->type === 'daily_streak') {
+                    $this->updateDailyStreak($user);
+                }
+
                 // Update user specific fields for certain tasks
                 $this->updateUserForTask($task, $user);
             });
@@ -199,6 +210,34 @@ class TaskController extends Controller
     }
 
     /**
+     * Update daily streak for user
+     */
+    private function updateDailyStreak(User $user): void
+    {
+        $today = today();
+        $yesterday = today()->subDay();
+        
+        // Check if user completed any task yesterday
+        $yesterdayCompleted = UserTaskProgress::where('user_id', $user->id)
+            ->whereDate('completion_date', $yesterday)
+            ->exists();
+            
+        // Get current streak
+        $currentStreak = $user->mining_streak ?: 0;
+        
+        if ($yesterdayCompleted) {
+            // Continue streak
+            $newStreak = $currentStreak + 1;
+        } else {
+            // Reset streak if missed yesterday
+            $newStreak = 1;
+        }
+        
+        // Update user streak
+        $user->update(['mining_streak' => $newStreak]);
+    }
+
+    /**
      * Reward user for completing task
      */
     private function rewardUser(User $user, $amount, $type, $description): void
@@ -250,7 +289,4 @@ class TaskController extends Controller
             ]
         ]);
     }
-
-
-    
 }

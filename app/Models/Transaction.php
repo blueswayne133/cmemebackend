@@ -145,18 +145,22 @@ class Transaction extends Model
     /**
      * Create a referral reward transaction
      */
-    public static function createReferralReward(User $user, float $amount, User $referredUser = null): self
+    public static function createReferralReward(User $user, float $amount, User $referredUser = null, string $currency = 'CMEME'): self
     {
+        $description = $referredUser ? 
+            "Referral reward for {$referredUser->username} (KYC Verified)" : 
+            'Referral reward claim';
+
         return self::create([
             'user_id' => $user->id,
             'type' => self::TYPE_REFERRAL,
             'amount' => $amount,
-            'description' => $referredUser ? 
-                "Referral reward for {$referredUser->username}" : 
-                'Referral reward',
+            'description' => $description,
             'metadata' => [
                 'reward_type' => 'referral',
                 'referred_user_id' => $referredUser?->id,
+                'currency' => $currency,
+                'kyc_verified' => (bool) $referredUser,
             ],
         ]);
     }

@@ -30,6 +30,9 @@ return new class extends Migration
             $table->boolean('can_claim_referral_usdc')->default(false);
             $table->integer('mining_streak')->default(0);
             $table->timestamp('last_mining_at')->nullable();
+            $table->enum('kyc_status', ['not_submitted', 'pending', 'verified', 'rejected'])->default('not_submitted');
+            $table->unsignedBigInteger('current_kyc_id')->nullable(); // Remove foreign key constraint here
+            $table->timestamp('kyc_verified_at')->nullable();
             $table->rememberToken();
             $table->timestamps();
         });

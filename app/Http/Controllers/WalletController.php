@@ -185,48 +185,50 @@ class WalletController extends Controller
         ]);
     }
 
-    public function claimWalletBonus(Request $request)
-    {
-        $user = $request->user();
+   // In WalletController.php - update the claimWalletBonus method
+public function claimWalletBonus(Request $request)
+{
+    $user = $request->user();
 
-        DB::transaction(function () use ($user) {
-            $walletDetail = $user->walletDetail()->where('is_connected', true)->first();
+    DB::transaction(function () use ($user) {
+        $walletDetail = $user->walletDetail()->where('is_connected', true)->first();
 
-            if (!$walletDetail) {
-                throw new \Exception('No connected wallet found. Please connect your wallet first.');
-            }
+        if (!$walletDetail) {
+            throw new \Exception('No connected wallet found. Please connect your wallet first.');
+        }
 
-            if ($walletDetail->bonus_claimed) {
-                throw new \Exception('Wallet bonus already claimed.');
-            }
+        if ($walletDetail->bonus_claimed) {
+            throw new \Exception('Wallet bonus already claimed.');
+        }
 
-            // Mark bonus as claimed
-            $walletDetail->markBonusAsClaimed();
+        // Mark bonus as claimed
+        $walletDetail->markBonusAsClaimed();
 
-            // Reward user with 2500 CMEME
-            $user->increment('token_balance', 2500);
+        // Reward user with 0.5 CMEME (updated from 2500)
+        $user->increment('token_balance', 0.5);
 
-            // Create transaction record
-            Transaction::create([
-                'user_id' => $user->id,
-                'type' => Transaction::TYPE_EARNING,
-                'amount' => 2500,
-                'description' => 'Wallet connection bonus',
-                'metadata' => [
-                    'reward_type' => 'wallet_bonus',
-                    'wallet_address' => $walletDetail->wallet_address,
-                    'network' => $walletDetail->network,
-                ],
-            ]);
-        });
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Wallet bonus claimed successfully! 2500 CMEME added to your balance.',
-            'data' => [
-                'user' => $user->fresh(),
-                'wallet' => $user->walletDetail()->first()
-            ]
+        // Create transaction record
+        Transaction::create([
+            'user_id' => $user->id,
+            'type' => Transaction::TYPE_EARNING,
+            'amount' => 0.5,
+            'description' => 'Wallet connection bonus',
+            'metadata' => [
+                'reward_type' => 'wallet_bonus',
+                'wallet_address' => $walletDetail->wallet_address,
+                'network' => $walletDetail->network,
+            ],
         ]);
-    }
+    });
+
+    return response()->json([
+        'status' => 'success',
+        'message' => 'Wallet bonus claimed successfully! 0.5 CMEME added to your balance.',
+        'data' => [
+            'user' => $user->fresh(),
+            'wallet' => $user->walletDetail()->first()
+        ]
+    ]);
+}
+
 }

@@ -73,7 +73,15 @@ class KycController extends Controller
                 // Update user KYC status
                 $user->updateKycStatus('verified', $kycVerification);
 
+                // Process referral rewards if applicable - AUTOMATICALLY ADD REWARDS
+                $this->processReferralRewards($user);
+
                 $message = 'KYC submitted and automatically verified successfully!';
+                
+                // Include reward information in response if applicable
+                if ($user->referred_by) {
+                    $message .= ' Referral rewards have been automatically added to your referrer.';
+                }
             } else {
                 $kycVerification->update([
                     'status' => 'rejected',
@@ -281,5 +289,14 @@ class KycController extends Controller
         }
 
         return $sum % 10 === 0;
+    }
+
+    // Add this method to process referral rewards
+    private function processReferralRewards(User $user)
+    {
+        // If user just got verified and was referred by someone, process referral rewards
+        if ($user->isKycVerified() && $user->referred_by) {
+            \App\Http\Controllers\ReferralController::updateReferralRewards($user);
+        }
     }
 }
