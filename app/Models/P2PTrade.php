@@ -12,12 +12,12 @@ class P2PTrade extends Model
 {
     use HasFactory;
 
-    /**
+/**
      * The table associated with the model.
      *
      * @var string
      */
-    protected $table = 'p2p_trades'; // Explicitly set the table name
+    protected $table = 'p2p_trades';
 
     protected $fillable = [
         'seller_id',
@@ -76,16 +76,6 @@ class P2PTrade extends Model
         return $query->where('status', 'active');
     }
 
-    public function scopeBuy($query)
-    {
-        return $query->where('type', 'buy');
-    }
-
-    public function scopeSell($query)
-    {
-        return $query->where('type', 'sell');
-    }
-
     public function scopeProcessing($query)
     {
         return $query->where('status', 'processing');
@@ -110,6 +100,11 @@ class P2PTrade extends Model
     public function isCancelled(): bool
     {
         return $this->status === 'cancelled';
+    }
+
+    public function isPaid(): bool
+    {
+        return !is_null($this->paid_at);
     }
 
     public function hasDispute(): bool
@@ -155,14 +150,19 @@ class P2PTrade extends Model
         return $this->expires_at && $this->expires_at->isPast();
     }
 
-    public function getTimeRemaining(): string
+    public function getTimeRemainingAttribute(): string
     {
         if (!$this->expires_at) {
             return 'N/A';
         }
 
-        $remaining = now()->diff($this->expires_at);
-        return sprintf('%02d:%02d', $remaining->i, $remaining->s);
+        $now = now();
+        if ($this->expires_at->isPast()) {
+            return 'Expired';
+        }
+
+        $diffInMinutes = $this->expires_at->diffInMinutes($now);
+        return $diffInMinutes . ' min';
     }
 
     public function getPaymentMethodLabel(): string
@@ -172,8 +172,13 @@ class P2PTrade extends Model
             'wise' => 'Wise',
             'paypal' => 'PayPal',
             'revolut' => 'Revolut',
+            'usdc' => 'USDC',
+            'usdt' => 'USDT',
             'other' => 'Other',
             default => ucfirst(str_replace('_', ' ', $this->payment_method))
         };
     }
+
+    // Add this to make time_remaining accessible
+    protected $appends = ['time_remaining'];
 }
