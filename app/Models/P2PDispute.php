@@ -1,5 +1,4 @@
 <?php
-// app/Models/P2PDispute.php
 
 namespace App\Models;
 
@@ -10,6 +9,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class P2PDispute extends Model
 {
     use HasFactory;
+
+    /**
+     * The table associated with the model.
+     *
+     * @var string
+     */
+    protected $table = 'p2p_disputes'; // Explicitly set the table name
 
     protected $fillable = [
         'trade_id',

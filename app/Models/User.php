@@ -43,11 +43,15 @@ class User extends Authenticatable
     'two_factor_secret',
     'backup_codes',
     'two_factor_enabled_at',
+       // Email verification fields
+        'email_verified_at',
+        'email_verification_code',
     ];
 
     protected $hidden = [
         'password',
         'remember_token',
+        'email_verification_code', 
     ];
 
     protected function casts(): array
@@ -345,6 +349,41 @@ protected static function boot()
         $user->securitySettings()->create();
     });
 }
+
+
+/**
+ * Get the user's full name
+ */
+public function getNameAttribute(): string
+{
+    if ($this->first_name && $this->last_name) {
+        return $this->first_name . ' ' . $this->last_name;
+    }
+    
+    return $this->username;
+}
+
+
+
+    /**
+     * Check if user has verified email
+     */
+    public function hasVerifiedEmail(): bool
+    {
+        return !is_null($this->email_verified_at);
+    }
+
+    /**
+     * Mark email as verified
+     */
+    public function markEmailAsVerified(): bool
+    {
+        return $this->forceFill([
+            'email_verified_at' => $this->freshTimestamp(),
+            'is_verified' => true,
+            'email_verification_code' => null,
+        ])->save();
+    }
 
 
 }

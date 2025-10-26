@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\EmailVerificationMail;
 use App\Mail\PasswordResetMail;
 use App\Models\User;
 use App\Services\TwoFactorService;
@@ -10,6 +11,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 
@@ -22,76 +24,83 @@ class AuthController extends Controller
         $this->twoFactorService = $twoFactorService;
     }
 
-    public function register(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'username' => 'required|string|min:3|max:255|unique:users',
-            'email' => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:6',
-            'firstname' => 'required|string|min:2|max:255',
-            'lastname' => 'required|string|min:2|max:255',
-        ]);
+   public function register(Request $request)
+{
+    $validator = Validator::make($request->all(), [
+        'username' => 'required|string|min:3|max:255|unique:users',
+        'email' => 'required|string|email|max:255|unique:users',
+        'password' => 'required|string|min:6',
+        'firstname' => 'required|string|min:2|max:255',
+        'lastname' => 'required|string|min:2|max:255',
+    ]);
 
-        if ($request->password !== $request->password_confirmation) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Validation failed. Please check your input.',
-                'errors' => ['password' => ['The password confirmation does not match.']]
-            ], 422);
-        }
-
-        if ($validator->fails()) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Validation failed. Please check your input.',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        $referredBy = null;
-        if ($request->referral_code) {
-            $referredBy = User::where('referral_code', $request->referral_code)->first();
-            
-            // Add referral rewards if referrer exists
-            if ($referredBy) {
-                DB::transaction(function () use ($referredBy) {
-                    $referredBy->increment('referral_usdc_balance', 0.1);
-                    $referredBy->increment('token_balance', 0.5);
-                    $referredBy->increment('referral_token_balance', 0.5);
-                });
-            }
-        }
-
-        $user = User::create([
-            'username' => $request->username,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'first_name' => $request->firstname,
-            'last_name' => $request->lastname,
-            'uid' => str_pad(random_int(1, 999999999), 9, '0', STR_PAD_LEFT),
-            'referral_code' => 'cmeme' . Str::random(2),
-            'referred_by' => $referredBy?->id,
-            'wallet_address' => '0x' . Str::random(40),
-            'referral_usdc_balance' => 0,
-            'referral_token_balance' => 0,
-            'kyc_status' => 'not_submitted',
-            'is_verified' => false,
-            'token_balance' => 0,
-            'usdc_balance' => 0,
-            'mining_streak' => 0,
-        ]);
-
-        $token = $user->createToken('auth-token')->plainTextToken;
-
+    if ($request->password !== $request->password_confirmation) {
         return response()->json([
-            'status' => 'success',
-            'message' => 'Registration successful!',
-            'data' => [
-                'user' => $user,
-                'token' => $token,
-            ]
-        ], 201);
+            'status' => 'error',
+            'message' => 'Validation failed. Please check your input.',
+            'errors' => ['password' => ['The password confirmation does not match.']]
+        ], 422);
     }
+
+    if ($validator->fails()) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Validation failed. Please check your input.',
+            'errors' => $validator->errors()
+        ], 422);
+    }
+
+    $referredBy = null;
+    if ($request->referral_code) {
+        $referredBy = User::where('referral_code', $request->referral_code)->first();
+        
+        if ($referredBy) {
+            DB::transaction(function () use ($referredBy) {
+                $referredBy->increment('referral_usdc_balance', 0.1);
+                $referredBy->increment('token_balance', 0.5);
+                $referredBy->increment('referral_token_balance', 0.5);
+            });
+        }
+    }
+
+    $user = User::create([
+        'username' => $request->username,
+        'email' => $request->email,
+        'password' => Hash::make($request->password),
+        'first_name' => $request->firstname,
+        'last_name' => $request->lastname,
+        'uid' => str_pad(random_int(1, 999999999), 9, '0', STR_PAD_LEFT),
+        'referral_code' => 'cmeme' . Str::random(2),
+        'referred_by' => $referredBy?->id,
+        'wallet_address' => '0x' . Str::random(40),
+        'referral_usdc_balance' => 0,
+        'referral_token_balance' => 0,
+        'kyc_status' => 'not_submitted',
+        'is_verified' => false,
+        'token_balance' => 0,
+        'usdc_balance' => 0,
+        'mining_streak' => 0,
+        'email_verification_code' => str_pad(random_int(1, 999999), 6, '0', STR_PAD_LEFT),
+        'email_verified_at' => null,
+    ]);
+
+    // Send email verification code
+    try {
+        Mail::to($user->email)->send(new EmailVerificationMail($user->email_verification_code));
+    } catch (\Exception $e) {
+        Log::error('Failed to send verification email: ' . $e->getMessage());
+    }
+
+    return response()->json([
+        'status' => 'success',
+        'message' => 'Registration successful! Please check your email for verification code.',
+        'data' => [
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'requires_verification' => true
+        ]
+    ], 201);
+}
 
     public function login(Request $request)
     {
@@ -146,6 +155,117 @@ class AuthController extends Controller
             ]
         ]);
     }
+
+
+    public function verifyEmail(Request $request)
+{
+    $validator = Validator::make($request->all(), [
+        'email' => 'required|email|exists:users,email',
+        'code' => 'required|string|size:6',
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Validation failed',
+            'errors' => $validator->errors()
+        ], 422);
+    }
+
+    $user = User::where('email', $request->email)->first();
+
+    if (!$user) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'User not found',
+        ], 404);
+    }
+
+    if ($user->email_verified_at) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Email already verified',
+        ], 422);
+    }
+
+    if ($user->email_verification_code !== $request->code) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Invalid verification code',
+        ], 422);
+    }
+
+    // Mark email as verified
+    $user->update([
+        'email_verified_at' => now(),
+        'is_verified' => true,
+        'email_verification_code' => null
+    ]);
+
+    $token = $user->createToken('auth-token')->plainTextToken;
+
+    return response()->json([
+        'status' => 'success',
+        'message' => 'Email verified successfully!',
+        'data' => [
+            'user' => $user,
+            'token' => $token,
+        ]
+    ]);
+}
+
+// ADD resendVerificationCode METHOD HERE - after verifyEmail
+public function resendVerificationCode(Request $request)
+{
+    $validator = Validator::make($request->all(), [
+        'email' => 'required|email|exists:users,email',
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Validation failed',
+            'errors' => $validator->errors()
+        ], 422);
+    }
+
+    $user = User::where('email', $request->email)->first();
+
+    if (!$user) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'User not found',
+        ], 404);
+    }
+
+    if ($user->email_verified_at) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Email already verified',
+        ], 422);
+    }
+
+    // Generate new code
+    $user->update([
+        'email_verification_code' => str_pad(random_int(1, 999999), 6, '0', STR_PAD_LEFT)
+    ]);
+
+    // Resend email
+    try {
+        Mail::to($user->email)->send(new EmailVerificationMail($user->email_verification_code));
+    } catch (\Exception $e) {
+        Log::error('Failed to resend verification email: ' . $e->getMessage());
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Failed to send verification email. Please try again.',
+        ], 500);
+    }
+
+    return response()->json([
+        'status' => 'success',
+        'message' => 'Verification code sent successfully',
+    ]);
+}
 
     public function verifyTwoFactor(Request $request)
     {

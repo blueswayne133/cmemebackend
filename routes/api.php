@@ -34,6 +34,8 @@ Route::post('/2fa-methods', [AuthController::class, 'getTwoFactorMethods']);
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
 Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 Route::get('/platform-stats', [AuthController::class, 'getPlatformStats']);
+Route::post('/verify-email', [AuthController::class, 'verifyEmail']);
+Route::post('/resend-verification', [AuthController::class, 'resendVerificationCode']);
 
 // Public verification route (no auth required)
 Route::get('/transactions/verify-transfer/{token}', [TransactionController::class, 'verifyTransfer']);
@@ -147,45 +149,65 @@ Route::get('/history', [DepositController::class, 'getDepositHistory']);
 
 
 
+// Public admin routes
+Route::prefix('admin')->group(function () {
+    Route::post('/login', [AdminAuthController::class, 'login']); // ← Use AdminAuthController
+});
+
+
 
 
 // Admin Authentication
-Route::prefix('admin')->group(function () {
-    Route::post('/login', [AdminAuthController::class, 'login']);
-    Route::post('/logout', [AdminAuthController::class, 'logout'])->middleware('auth:sanctum');
-});
 
-// Protected Admin Routes
-Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function () {
+Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     // Dashboard
     Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
-    
-    // User Management
+    Route::get('/dashboard/recent-activity', [DashboardController::class, 'getRecentActivity']);
+
+    // Users Management
     Route::get('/users', [UserController::class, 'index']);
     Route::get('/users/{id}', [UserController::class, 'show']);
     Route::post('/users/{id}/verify', [UserController::class, 'verify']);
     Route::post('/users/{id}/suspend', [UserController::class, 'suspend']);
-    Route::post('/users/{id}/activate', [UserController::class, 'activate']);
-    Route::delete('/users/{id}', [UserController::class, 'destroy']);
-    Route::post('/users/{id}/impersonate', [UserController::class, 'impersonate']);
-    Route::post('/users/{id}/add-balance', [UserController::class, 'addBalance']);
-    Route::post('/users/{id}/send-email', [UserController::class, 'sendEmail']);
+    Route::post('/users/{id}/balance', [UserController::class, 'updateBalance']);
     Route::get('/users/{id}/transactions', [UserController::class, 'getUserTransactions']);
-    Route::get('/users/{id}/kyc', [UserController::class, 'getUserKyc']);
-    
+    Route::get('/users/{id}/trades', [UserController::class, 'getUserTrades']);
+    Route::delete('/users/{id}', [UserController::class, 'destroy']);
+
     // KYC Management
-    Route::get('/kyc/pending', [AdminKycController::class, 'pending']);
-    Route::get('/kyc/history', [AdminKycController::class, 'history']);
-    Route::post('/kyc/{id}/approve', [AdminKycController::class, 'approve']);
-    Route::post('/kyc/{id}/reject', [AdminKycController::class, 'reject']);
-    
-    // Transaction Management
+    Route::get('/kyc', [KycController::class, 'index']);
+    Route::get('/kyc/pending', [KycController::class, 'pending']);
+    Route::get('/kyc/{id}', [KycController::class, 'show']);
+    Route::post('/kyc/{id}/approve', [KycController::class, 'approve']);
+    Route::post('/kyc/{id}/reject', [KycController::class, 'reject']);
+    Route::get('/kyc/user/{userId}/history', [KycController::class, 'getUserKycHistory']);
+    Route::get('/kyc/{id}/document/{type}', [KycController::class, 'getDocument']);
+
+    // Transactions
     Route::get('/transactions', [AdminTransactionController::class, 'index']);
-    Route::get('/transactions/stats', [AdminTransactionController::class, 'stats']);
-    Route::post('/transactions/{id}/verify', [AdminTransactionController::class, 'verify']);
-    
+    Route::get('/transactions/{id}', [AdminTransactionController::class, 'show']);
+    Route::get('/transactions/user/{userId}', [AdminTransactionController::class, 'getUserTransactions']);
+    Route::get('/transactions/stats', [AdminTransactionController::class, 'getStats']);
+
+    // P2P Trading
+    Route::get('/p2p/trades', [P2PController::class, 'getTrades']);
+    Route::get('/p2p/trades/{id}', [P2PController::class, 'getTrade']);
+    Route::get('/p2p/disputes', [P2PController::class, 'getDisputes']);
+    Route::post('/p2p/disputes/{id}/resolve', [P2PController::class, 'resolveDispute']);
+    Route::post('/p2p/trades/{id}/cancel', [P2PController::class, 'cancelTrade']);
+
+    // Wallet Management
+    Route::get('/wallets', [WalletController::class, 'index']);
+    Route::post('/wallets/{id}/status', [WalletController::class, 'updateWalletStatus']);
+    Route::post('/wallets/{id}/bonus', [WalletController::class, 'grantBonus']);
+
     // Settings
-    Route::get('/settings', [SettingsController::class, 'index']);
-    Route::post('/settings', [SettingsController::class, 'update']);
-    Route::post('/settings/email-test', [SettingsController::class, 'testEmail']);
+    Route::get('/settings/system', [SettingsController::class, 'getSystemSettings']);
+    Route::post('/settings/system', [SettingsController::class, 'updateSystemSettings']);
+    Route::get('/settings/tasks', [SettingsController::class, 'getTaskSettings']);
+    Route::post('/settings/tasks', [SettingsController::class, 'createTask']);
+    Route::put('/settings/tasks/{id}', [SettingsController::class, 'updateTask']);
+    Route::get('/settings/admins', [SettingsController::class, 'getAdminUsers']);
+    Route::post('/settings/admins', [SettingsController::class, 'createAdmin']);
+    Route::put('/settings/admins/{id}', [SettingsController::class, 'updateAdmin']);
 });

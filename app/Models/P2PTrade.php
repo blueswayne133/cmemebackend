@@ -1,6 +1,5 @@
 <?php
 
-
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -12,6 +11,13 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class P2PTrade extends Model
 {
     use HasFactory;
+
+    /**
+     * The table associated with the model.
+     *
+     * @var string
+     */
+    protected $table = 'p2p_trades'; // Explicitly set the table name
 
     protected $fillable = [
         'seller_id',
