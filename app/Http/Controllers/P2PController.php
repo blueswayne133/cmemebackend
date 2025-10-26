@@ -97,16 +97,16 @@ class P2PController extends Controller
         }
 
         // For buy orders, no locking of USDC - buyer pays after trade initiation
-        if ($request->type === 'buy') {
-            // Just validate they have enough USDC for when they initiate trades
-            $totalCost = $request->amount * $request->price;
-            if ($user->usdc_balance < $totalCost) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Insufficient USDC balance for this trade'
-                ], 400);
-            }
-        }
+        // if ($request->type === 'buy') {
+        //     // Just validate they have enough USDC for when they initiate trades
+        //     $totalCost = $request->amount * $request->price;
+        //     if ($user->usdc_balance < $totalCost) {
+        //         return response()->json([
+        //             'status' => 'error',
+        //             'message' => 'Insufficient USDC balance for this trade'
+        //         ], 400);
+        //     }
+        // }
 
         try {
             $trade = P2PTrade::create([
