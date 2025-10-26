@@ -20,7 +20,7 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\KycController as AdminKycController;
 use App\Http\Controllers\Admin\AdminTransactionController;
 use App\Http\Controllers\Admin\SettingsController;
-
+use App\Http\Controllers\PlatformController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -36,7 +36,7 @@ Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 Route::get('/platform-stats', [AuthController::class, 'getPlatformStats']);
 Route::post('/verify-email', [AuthController::class, 'verifyEmail']);
 Route::post('/resend-verification', [AuthController::class, 'resendVerificationCode']);
-
+Route::get('/platform-statistics', [PlatformController::class, 'getPlatformStats']);
 // Public verification route (no auth required)
 Route::get('/transactions/verify-transfer/{token}', [TransactionController::class, 'verifyTransfer']);
 

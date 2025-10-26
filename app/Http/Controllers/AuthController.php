@@ -578,7 +578,7 @@ public function resendVerificationCode(Request $request)
 
 
     public function getPlatformStats()
-{
+ {
     try {
         // Get total active users (users who have logged in recently)
         $activeUsers = User::where('last_login_at', '>=', now()->subDays(30))->count();
