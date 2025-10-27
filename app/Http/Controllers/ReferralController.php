@@ -25,7 +25,12 @@ class ReferralController extends Controller
             // Calculate stats
             $totalReferrals = $user->referrals()->count();
             $verifiedReferrals = $user->referrals()->where('kyc_status', 'verified')->count();
-            $pendingReferrals = $user->referrals()->where('kyc_status', 'pending')->count();
+            $pendingReferrals = $user->referrals()
+            ->where(function($query) {
+                $query->where('kyc_status', '!=', 'verified')
+                      ->orWhere('is_verified', false);
+            })
+            ->count();
             
             // Calculate total earnings - use simpler approach without transactions for now
             $totalUsdcEarned = $user->referral_usdc_balance; // Just show pending balance for now
