@@ -63,6 +63,7 @@ Route::middleware('auth:sanctum')->group(function () {
   
     Route::prefix('referrals')->group(function () {
     Route::get('/stats', [ReferralController::class, 'getReferralStats']);
+     Route::post('/claim-usdc', [ReferralController::class, 'claimUSDC']); 
     });
 
 

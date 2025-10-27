@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 
 use App\Models\KycVerification;
 use App\Models\User;
+use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
@@ -73,14 +74,14 @@ class KycController extends Controller
                 // Update user KYC status
                 $user->updateKycStatus('verified', $kycVerification);
 
-                // Process referral rewards if applicable - AUTOMATICALLY ADD REWARDS
+                // Process referral rewards if applicable
                 $this->processReferralRewards($user);
 
                 $message = 'KYC submitted and automatically verified successfully!';
                 
                 // Include reward information in response if applicable
                 if ($user->referred_by) {
-                    $message .= ' Referral rewards have been automatically added to your referrer.';
+                    $message .= ' Referral rewards have been processed.';
                 }
             } else {
                 $kycVerification->update([
@@ -291,12 +292,37 @@ class KycController extends Controller
         return $sum % 10 === 0;
     }
 
-    // Add this method to process referral rewards
+    // Process referral rewards when user completes KYC
     private function processReferralRewards(User $user)
     {
         // If user just got verified and was referred by someone, process referral rewards
         if ($user->isKycVerified() && $user->referred_by) {
-            \App\Http\Controllers\ReferralController::updateReferralRewards($user);
+            $referrer = User::find($user->referred_by);
+            
+            if ($referrer) {
+                // Reward amounts
+                $cmemeReward = 0.5;
+                $usdcReward = 0.1;
+
+                // Add CMEME tokens immediately to referrer's balance
+                $referrer->increment('token_balance', $cmemeReward);
+                
+                // Add USDC to referrer's pending balance (requires claiming)
+                $referrer->increment('referral_usdc_balance', $usdcReward);
+
+                // Create transaction for CMEME reward
+                Transaction::create([
+                    'user_id' => $referrer->id,
+                    'type' => Transaction::TYPE_DEPOSIT,
+                    'amount' => $cmemeReward,
+                    'currency' => 'CMEME',
+                    'status' => 'completed',
+                    'description' => 'Referral reward from ' . $user->username,
+                ]);
+
+                // Call the referral controller to update overall stats
+                \App\Http\Controllers\ReferralController::updateReferralRewards($user);
+            }
         }
     }
 }

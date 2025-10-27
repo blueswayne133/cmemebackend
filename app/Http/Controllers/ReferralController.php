@@ -1,4 +1,5 @@
 <?php
+// app/Http/Controllers/ReferralController.php
 
 namespace App\Http\Controllers;
 
@@ -12,96 +13,119 @@ class ReferralController extends Controller
 {
     public function getReferralStats(Request $request)
     {
-        $user = $request->user();
-        
-        // Get all referrals
-        $allReferrals = $user->referrals()
-            ->select('id', 'username', 'created_at', 'kyc_status', 'is_verified')
-            ->latest()
-            ->paginate(10);
-
-        // Count verified referrals (completed KYC)
-        $verifiedReferralsCount = $user->referrals()
-            ->where('kyc_status', 'verified')
-            ->where('is_verified', true)
-            ->count();
-
-        // Count pending referrals (not completed KYC)
-        $pendingReferralsCount = $user->referrals()
-            ->where(function($query) {
-                $query->where('kyc_status', '!=', 'verified')
-                      ->orWhere('is_verified', false);
-            })
-            ->count();
-
-        // Calculate total earned from referrals
-        $totalUSDCEarned = $verifiedReferralsCount * 0.1;
-        $totalCMEMEEarned = $verifiedReferralsCount * 0.5;
-
-        return response()->json([
-            'status' => 'success',
-            'data' => [
-                'total_referrals' => $allReferrals->total(),
-                'verified_referrals' => $verifiedReferralsCount,
-                'pending_referrals' => $pendingReferralsCount,
-                'total_usdc_earned' => (float) $totalUSDCEarned,
-                'total_cmeme_earned' => (float) $totalCMEMEEarned,
-                'referrals' => [
-                    'data' => $allReferrals->items(),
-                    'current_page' => $allReferrals->currentPage(),
-                    'last_page' => $allReferrals->lastPage(),
-                    'total' => $allReferrals->total(),
-                ]
-            ]
-        ]);
-    }
-
-    /**
-     * Update referral rewards when a referred user completes KYC
-     */
-    public static function updateReferralRewards(User $referredUser)
-    {
-        if (!$referredUser->referred_by || !$referredUser->isKycVerified()) {
-            return;
-        }
-
-        $referrer = User::find($referredUser->referred_by);
-        if (!$referrer) {
-            return;
-        }
-
         try {
-            DB::transaction(function () use ($referrer, $referredUser) {
-                // Calculate rewards
-                $usdcReward = 0.1;
-                $cmemeReward = 0.5;
+            $user = $request->user();
+            
+            // Get referrals with pagination
+            $referrals = $user->referrals()
+                ->select('id', 'username', 'email', 'kyc_status', 'is_verified', 'created_at')
+                ->latest()
+                ->paginate(10);
 
-                // Add rewards directly to referrer's main balances
-                $referrer->increment('usdc_balance', $usdcReward);
-                $referrer->increment('token_balance', $cmemeReward);
+            // Calculate stats
+            $totalReferrals = $user->referrals()->count();
+            $verifiedReferrals = $user->referrals()->where('kyc_status', 'verified')->count();
+            $pendingReferrals = $user->referrals()->where('kyc_status', 'pending')->count();
+            
+            // Calculate total earnings - use simpler approach without transactions for now
+            $totalUsdcEarned = $user->referral_usdc_balance; // Just show pending balance for now
+            $totalCmemeEarned = $verifiedReferrals * 0.5;; // We'll calculate this from actual rewards given
 
-                // Create transaction records
-                Transaction::createReferralReward(
-                    $referrer, 
-                    $usdcReward, 
-                    $referredUser,
-                    'USDC'
-                );
+            $stats = [
+                'total_referrals' => $totalReferrals,
+                'verified_referrals' => $verifiedReferrals,
+                'pending_referrals' => $pendingReferrals,
+                'total_usdc_earned' => $totalUsdcEarned,
+                'total_cmeme_earned' => $totalCmemeEarned,
+                'pending_usdc_balance' => $user->referral_usdc_balance,
+                'referrals' => [
+                    'data' => $referrals->items(),
+                    'current_page' => $referrals->currentPage(),
+                    'last_page' => $referrals->lastPage(),
+                    'total' => $referrals->total(),
+                ]
+            ];
 
-                Transaction::createReferralReward(
-                    $referrer, 
-                    $cmemeReward, 
-                    $referredUser,
-                    'CMEME'
-                );
-
-                // Also update referral tracking balances for statistics
-                $referrer->increment('referral_usdc_balance', $usdcReward);
-                $referrer->increment('referral_token_balance', $cmemeReward);
-            });
+            return response()->json([
+                'status' => 'success',
+                'data' => $stats
+            ]);
 
         } catch (\Exception $e) {
-            Log::error('Failed to update referral rewards: ' . $e->getMessage());
+            Log::error('Error in getReferralStats: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
+            
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to fetch referral stats: ' . $e->getMessage()
+            ], 500);
         }
+    }
+
+    public function claimUSDC(Request $request)
+    {
+        $user = $request->user();
+        
+        // Check if claiming is enabled
+        if (!$user->can_claim_referral_usdc) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'USDC claiming is currently disabled by admin'
+            ], 400);
+        }
+        
+        // Check if user has pending USDC to claim
+        if ($user->referral_usdc_balance <= 0) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'No USDC available to claim'
+            ], 400);
+        }
+        
+        try {
+            DB::beginTransaction();
+            
+            $claimAmount = $user->referral_usdc_balance;
+            
+            // Transfer from referral balance to main USDC balance
+            $user->usdc_balance += $claimAmount;
+            $user->referral_usdc_balance = 0;
+            $user->save();
+            
+            // // Create transaction record - use basic fields that exist in your model
+            // Transaction::create([
+            //     'user_id' => $user->id,
+            //     'type' => 'referral',
+            //     'amount' => $claimAmount,
+            //     'description' => 'Claimed referral USDC rewards',
+            // ]);
+            
+            DB::commit();
+            
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Successfully claimed $' . number_format($claimAmount, 2) . ' USDC',
+                'data' => [
+                    'claimed_amount' => $claimAmount,
+                    'new_usdc_balance' => $user->usdc_balance
+                ]
+            ]);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            
+            Log::error('Error claiming USDC: ' . $e->getMessage());
+            
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to claim USDC: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public static function updateReferralRewards(User $referredUser)
+    {
+        // This method can be used to update overall referral statistics
+        // You can add any additional logic needed for referral tracking here
     }
 }
