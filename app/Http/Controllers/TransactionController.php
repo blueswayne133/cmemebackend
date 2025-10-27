@@ -144,7 +144,7 @@ public function sendTokens(Request $request)
                 'user_id' => $recipient->id,
                 'type' => Transaction::TYPE_TRANSFER,
                 'amount' => $amount,
-                'description' => $description ?: "Received from {$user->uid}",
+                'description' => "Received from {$user->uid}",
                 'metadata' => [
                     'direction' => 'received',
                     'sender_uid' => $user->uid,
@@ -179,7 +179,7 @@ public function sendTokens(Request $request)
                 'user_id' => $recipient->id,
                 'type' => Transaction::TYPE_TRANSFER,
                 'amount' => $amount,
-                'description' => $description ?: "USDC Received from {$user->uid}",
+                'description' => "USDC Received from {$user->uid}",
                 'metadata' => [
                     'direction' => 'received',
                     'sender_uid' => $user->uid,
