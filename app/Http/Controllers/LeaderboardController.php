@@ -19,18 +19,17 @@ class LeaderboardController extends Controller
         $endDate = $dateRange['end'];
         $displayDate = $dateRange['display'];
 
-        // Get leaderboard data using Transaction model
-        $leaderboardData = Transaction::getLeaderboardData($startDate, $endDate, 100);
+        // Get leaderboard data from mining transactions only
+        $leaderboardData = $this->getMiningLeaderboardData($startDate, $endDate, 100);
 
         $leaderboard = $leaderboardData->map(function($item, $index) {
-            $user = $item->user;
             return [
                 'rank' => $index + 1,
-                'username' => $this->maskUsername($user->username),
-                'uid' => $user->uid,
-                'total_earned' => (float) $item->total_earned,
-                'transaction_count' => $item->transaction_count,
-                'avatar' => $this->generateAnimatedAvatar($user->username)
+                'username' => $item->username,
+                'uid' => $item->uid,
+                'total_earned' => (float) $item->total_mining_earned,
+                'transaction_count' => $item->mining_count,
+                'avatar_url' => $item->avatar_url
             ];
         });
 
@@ -44,6 +43,31 @@ class LeaderboardController extends Controller
         ]);
     }
 
+    private function getMiningLeaderboardData($startDate, $endDate, $limit = 100)
+    {
+        return DB::table('transactions')
+            ->select([
+                'users.id as user_id',
+                'users.username',
+                'users.uid',
+                'users.avatar_url',
+                DB::raw('SUM(transactions.amount) as total_mining_earned'),
+                DB::raw('COUNT(transactions.id) as mining_count')
+            ])
+            ->join('users', 'transactions.user_id', '=', 'users.id')
+            ->where('transactions.type', 'mining')
+            ->where('transactions.amount', '>', 0)
+            ->whereBetween('transactions.created_at', [$startDate, $endDate])
+            ->groupBy('users.id', 'users.username', 'users.uid', 'users.avatar_url')
+            ->orderBy('total_mining_earned', 'DESC')
+            ->limit($limit)
+            ->get()
+            ->map(function($item) {
+                $item->username = $this->maskUsername($item->username);
+                return $item;
+            });
+    }
+
     private function getDateRange($period)
     {
         $now = Carbon::now();
@@ -51,12 +75,12 @@ class LeaderboardController extends Controller
         if ($period === 'month') {
             $startDate = $now->copy()->startOfMonth();
             $endDate = $now->copy()->endOfMonth();
-            $displayDate = $startDate->format('d/m/Y') . '-' . $endDate->format('d/m/Y');
+            $displayDate = $startDate->format('d/m/Y') . ' - ' . $endDate->format('d/m/Y');
         } else {
             // Default to week
             $startDate = $now->copy()->startOfWeek();
             $endDate = $now->copy()->endOfWeek();
-            $displayDate = $startDate->format('d/m/Y') . '-' . $endDate->format('d/m/Y');
+            $displayDate = $startDate->format('d/m/Y') . ' - ' . $endDate->format('d/m/Y');
         }
 
         return [
@@ -68,6 +92,10 @@ class LeaderboardController extends Controller
 
     private function maskUsername($username)
     {
+        if (empty($username)) {
+            return 'user***';
+        }
+        
         if (strlen($username) <= 3) {
             return $username . '***';
         }
@@ -76,11 +104,42 @@ class LeaderboardController extends Controller
         return $visiblePart . '***';
     }
 
-    private function generateAnimatedAvatar($username)
+    // Debug endpoint to check mining transactions
+    public function debugMiningTransactions(Request $request)
     {
-        $hash = crc32($username);
-        $hue = $hash % 360;
+        $user = $request->user();
         
-        return "https://api.dicebear.com/7.x/avataaars/svg?seed={$username}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf&radius=50&size=80";
+        $miningTransactions = Transaction::where('type', 'mining')
+            ->where('amount', '>', 0)
+            ->where('user_id', $user->id)
+            ->select('id', 'amount', 'description', 'created_at')
+            ->orderBy('created_at', 'DESC')
+            ->get();
+
+        $weeklyMining = Transaction::where('type', 'mining')
+            ->where('amount', '>', 0)
+            ->where('user_id', $user->id)
+            ->whereBetween('created_at', [Carbon::now()->startOfWeek(), Carbon::now()->endOfWeek()])
+            ->sum('amount');
+
+        $monthlyMining = Transaction::where('type', 'mining')
+            ->where('amount', '>', 0)
+            ->where('user_id', $user->id)
+            ->whereBetween('created_at', [Carbon::now()->startOfMonth(), Carbon::now()->endOfMonth()])
+            ->sum('amount');
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'user_id' => $user->id,
+                'username' => $user->username,
+                'total_mining_transactions' => $miningTransactions->count(),
+                'weekly_mining_total' => $weeklyMining,
+                'monthly_mining_total' => $monthlyMining,
+                'current_week' => Carbon::now()->startOfWeek()->format('Y-m-d') . ' to ' . Carbon::now()->endOfWeek()->format('Y-m-d'),
+                'current_month' => Carbon::now()->startOfMonth()->format('Y-m-d') . ' to ' . Carbon::now()->endOfMonth()->format('Y-m-d'),
+                'transactions' => $miningTransactions
+            ]
+        ]);
     }
 }
