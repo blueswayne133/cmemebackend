@@ -215,7 +215,8 @@ class P2PController extends Controller
             $trade->update([
                 'buyer_id' => $user->id,
                 'status' => 'processing',
-                'expires_at' => now()->addMinutes($trade->time_limit),
+                'expires_at' => now()->addMinutes(intval($trade->time_limit ?? 30)),
+
             ]);
 
             // Create transaction record

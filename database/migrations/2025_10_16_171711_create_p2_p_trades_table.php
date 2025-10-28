@@ -17,7 +17,7 @@ return new class extends Migration
             $table->decimal('amount', 18, 8);
             $table->decimal('price', 18, 8);
             $table->decimal('total', 18, 8);
-            $table->enum('payment_method', ['bank_transfer', 'wise', 'paypal', 'revolut', 'other']);
+            $table->enum('payment_method', ['bank_transfer', 'wise', 'usdc', 'usdt', 'paypal', 'revolut', 'other']);
             $table->text('payment_details')->nullable();
             $table->enum('status', ['active', 'processing', 'completed', 'cancelled', 'disputed']);
             $table->text('terms')->nullable();
