@@ -6,6 +6,7 @@ use App\Models\Task;
 use App\Models\User;
 use App\Models\Transaction;
 use App\Models\UserTaskProgress;
+use App\Models\UserSocialHandle;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -47,6 +48,18 @@ class TaskController extends Controller
             $description = $task->description;
             if ($task->type === 'daily_streak') {
                 $description = "Claim your daily streak bonus. Current streak: {$user->mining_streak} days";
+            }
+
+            // Check if social tasks are already completed
+            if (in_array($task->type, ['connect_twitter', 'connect_telegram'])) {
+                $socialHandle = UserSocialHandle::where('user_id', $user->id)
+                    ->where('platform', $task->type === 'connect_twitter' ? 'twitter' : 'telegram')
+                    ->first();
+                
+                if ($socialHandle) {
+                    $isCompleted = true;
+                    $canComplete = false;
+                }
             }
 
             $taskData = [
@@ -108,6 +121,16 @@ class TaskController extends Controller
                     throw new \Exception($validationError);
                 }
 
+                // Handle social media tasks
+                if (in_array($task->type, ['connect_twitter', 'connect_telegram'])) {
+                    $socialHandle = $request->input('social_handle');
+                    if (!$socialHandle) {
+                        throw new \Exception('Social media handle is required for this task.');
+                    }
+                    
+                    $this->saveSocialHandle($user, $task->type, $socialHandle);
+                }
+
                 // Get or create today's progress
                 $userTask = UserTaskProgress::where('user_id', $user->id)
                     ->where('task_id', $task->id)
@@ -159,19 +182,44 @@ class TaskController extends Controller
     }
 
     /**
+     * Save social media handle for user
+     */
+    private function saveSocialHandle(User $user, string $taskType, string $handle): void
+    {
+        $platform = $taskType === 'connect_twitter' ? 'twitter' : 'telegram';
+        
+        UserSocialHandle::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'platform' => $platform,
+            ],
+            [
+                'handle' => $handle,
+                'connected_at' => now(),
+            ]
+        );
+    }
+
+    /**
      * Validate task-specific completion requirements
      */
     private function validateTaskCompletion(Task $task, User $user): ?string
     {
         switch ($task->type) {
             case 'connect_twitter':
-                if ($user->twitter_connected) {
+                $twitterHandle = UserSocialHandle::where('user_id', $user->id)
+                    ->where('platform', 'twitter')
+                    ->first();
+                if ($twitterHandle) {
                     return 'Twitter account already connected.';
                 }
                 break;
 
             case 'connect_telegram':
-                if ($user->telegram_connected) {
+                $telegramHandle = UserSocialHandle::where('user_id', $user->id)
+                    ->where('platform', 'telegram')
+                    ->first();
+                if ($telegramHandle) {
                     return 'Telegram account already connected.';
                 }
                 break;

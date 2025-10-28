@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\AdminKycController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DepositController;
 use App\Http\Controllers\ReferralController;
@@ -17,10 +18,10 @@ use App\Http\Controllers\WalletController;
 use App\Http\Controllers\Admin\AuthController as AdminAuthController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\UserController;
-use App\Http\Controllers\Admin\KycController as AdminKycController;
 use App\Http\Controllers\Admin\AdminTransactionController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\PlatformController;
+use App\Models\Admin;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -176,21 +177,15 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::get('/users/{id}/trades', [UserController::class, 'getUserTrades']);
     Route::delete('/users/{id}', [UserController::class, 'destroy']);
 
-    // KYC Management
-    Route::get('/kyc', [KycController::class, 'index']);
-    Route::get('/kyc/pending', [KycController::class, 'pending']);
-    Route::get('/kyc/{id}', [KycController::class, 'show']);
-    Route::post('/kyc/{id}/approve', [KycController::class, 'approve']);
-    Route::post('/kyc/{id}/reject', [KycController::class, 'reject']);
-    Route::get('/kyc/user/{userId}/history', [KycController::class, 'getUserKycHistory']);
-    Route::get('/kyc/{id}/document/{type}', [KycController::class, 'getDocument']);
 
-    // Transactions
+ 
+        // Transaction Management
     Route::get('/transactions', [AdminTransactionController::class, 'index']);
-    Route::get('/transactions/{id}', [AdminTransactionController::class, 'show']);
-    Route::get('/transactions/user/{userId}', [AdminTransactionController::class, 'getUserTransactions']);
-    Route::get('/transactions/stats', [AdminTransactionController::class, 'getStats']);
-
+    Route::get('/transactions/{transaction}', [AdminTransactionController::class, 'show']);
+    Route::post('/transactions', [AdminTransactionController::class, 'store']);
+    Route::put('/transactions/{transaction}', [AdminTransactionController::class, 'update']);
+    Route::delete('/transactions/{transaction}', [AdminTransactionController::class, 'destroy']);
+    Route::get('/transactions/stats/summary', [AdminTransactionController::class, 'getStats']);
     // P2P Trading
     Route::get('/p2p/trades', [P2PController::class, 'getTrades']);
     Route::get('/p2p/trades/{id}', [P2PController::class, 'getTrade']);
@@ -212,4 +207,40 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::get('/settings/admins', [SettingsController::class, 'getAdminUsers']);
     Route::post('/settings/admins', [SettingsController::class, 'createAdmin']);
     Route::put('/settings/admins/{id}', [SettingsController::class, 'updateAdmin']);
+});
+
+
+
+// Admin KYC Management Routes
+Route::prefix('admin/kyc')->group(function () {
+    Route::get('/', [AdminKycController::class, 'index']);
+    Route::get('/pending', [AdminKycController::class, 'pending']);
+    Route::get('/{id}', [AdminKycController::class, 'show']);
+    Route::post('/{id}/approve', [AdminKycController::class, 'approve']);
+    Route::post('/{id}/reject', [AdminKycController::class, 'reject']);
+    Route::delete('/{id}', [AdminKycController::class, 'destroy']); // Add delete route
+    Route::get('/user/{userId}/history', [AdminKycController::class, 'getUserKycHistory']);
+    Route::get('/{id}/document/{type}', [AdminKycController::class, 'getDocument']);
+});
+
+
+
+// Add these routes to your admin section in api.php
+
+Route::prefix('admin')->group(function () {
+    // ... existing routes ...
+    
+    // Task Management Routes
+    Route::prefix('tasks')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\AdminTaskController::class, 'index']);
+        Route::post('/', [\App\Http\Controllers\Admin\AdminTaskController::class, 'create']);
+        Route::get('/{taskId}', [\App\Http\Controllers\Admin\AdminTaskController::class, 'show']);
+        Route::put('/{taskId}', [\App\Http\Controllers\Admin\AdminTaskController::class, 'update']);
+        Route::delete('/{taskId}', [\App\Http\Controllers\Admin\AdminTaskController::class, 'delete']);
+        Route::post('/{taskId}/toggle-status', [\App\Http\Controllers\Admin\AdminTaskController::class, 'toggleStatus']);
+        Route::get('/users/{userId}', [\App\Http\Controllers\Admin\AdminTaskController::class, 'getUserTasks']);
+        Route::post('/{taskId}/reset', [\App\Http\Controllers\Admin\AdminTaskController::class, 'resetUserTask']);
+        Route::post('/{taskId}/complete', [\App\Http\Controllers\Admin\AdminTaskController::class, 'forceCompleteTask']);
+        Route::get('/stats', [\App\Http\Controllers\Admin\AdminTaskController::class, 'getTaskStats']);
+    });
 });

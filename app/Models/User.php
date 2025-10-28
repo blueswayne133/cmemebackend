@@ -388,6 +388,25 @@ public function getNameAttribute(): string
 
 
 
+    /**
+ * Relationship with social handles
+ */
+public function socialHandles()
+{
+    return $this->hasMany(UserSocialHandle::class);
+}
+
+/**
+ * Get specific social handle
+ */
+public function getSocialHandle($platform)
+{
+    return $this->socialHandles()->where('platform', $platform)->first();
+}
+
+
+
+
     
 
 
