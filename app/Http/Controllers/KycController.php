@@ -306,9 +306,11 @@ class KycController extends Controller
 
                 // Add CMEME tokens immediately to referrer's balance
                 $referrer->increment('token_balance', $cmemeReward);
+                $referrer->increment('referral_token_balance', $cmemeReward);
                 
                 // Add USDC to referrer's pending balance (requires claiming)
                 $referrer->increment('referral_usdc_balance', $usdcReward);
+  
 
                 // Create transaction for CMEME reward
                 Transaction::create([

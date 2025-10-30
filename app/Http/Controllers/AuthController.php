@@ -54,13 +54,13 @@ class AuthController extends Controller
     if ($request->referral_code) {
         $referredBy = User::where('referral_code', $request->referral_code)->first();
         
-        if ($referredBy) {
-            DB::transaction(function () use ($referredBy) {
-                $referredBy->increment('referral_usdc_balance', 0.1);
-                $referredBy->increment('token_balance', 0.5);
-                $referredBy->increment('referral_token_balance', 0.5);
-            });
-        }
+        // if ($referredBy) {
+        //     DB::transaction(function () use ($referredBy) {
+        //         $referredBy->increment('referral_usdc_balance', 0.1);
+        //         $referredBy->increment('token_balance', 0.5);
+        //         $referredBy->increment('referral_token_balance', 0.5);
+        //     });
+        // }
     }
 
     $user = User::create([
