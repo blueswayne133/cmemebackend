@@ -12,7 +12,7 @@ class P2PTrade extends Model
 {
     use HasFactory;
 
-/**
+    /**
      * The table associated with the model.
      *
      * @var string
@@ -110,6 +110,11 @@ class P2PTrade extends Model
     public function hasDispute(): bool
     {
         return $this->dispute()->exists();
+    }
+
+    public function hasProofs(): bool
+    {
+        return $this->proofs()->exists();
     }
 
     // Business logic

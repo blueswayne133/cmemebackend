@@ -96,20 +96,6 @@ class P2PController extends Controller
                 $user->decrement('token_balance', $request->amount);
             }
 
-            // For buy orders, check if user has enough USDC balance
-            // if ($request->type === 'buy') {
-            //     $totalCost = $request->amount * $request->price;
-            //     if ($user->usdc_balance < $totalCost) {
-            //         return response()->json([
-            //             'status' => 'error',
-            //             'message' => 'Insufficient USDC balance for buy order'
-            //         ], 400);
-            //     }
-
-            //     // Lock USDC for buy order
-            //     $user->decrement('usdc_balance', $totalCost);
-            // }
-
             $trade = P2PTrade::create([
                 'seller_id' => $user->id,
                 'type' => $request->type,
@@ -216,7 +202,6 @@ class P2PController extends Controller
                 'buyer_id' => $user->id,
                 'status' => 'processing',
                 'expires_at' => now()->addMinutes(intval($trade->time_limit ?? 30)),
-
             ]);
 
             // Create transaction record
@@ -387,13 +372,13 @@ class P2PController extends Controller
         }
     }
 
-    // Get user's P2P trades - FIXED VERSION
+    // Get user's P2P trades - FIXED VERSION with proofs
     public function getUserTrades(Request $request)
     {
         $user = $request->user();
         $status = $request->get('status', 'all');
 
-        $query = P2PTrade::with(['seller', 'buyer'])
+        $query = P2PTrade::with(['seller', 'buyer', 'proofs'])
             ->where(function($query) use ($user) {
                 $query->where('seller_id', $user->id)
                       ->orWhere('buyer_id', $user->id);
@@ -487,17 +472,15 @@ class P2PController extends Controller
                 'description' => $request->description,
             ]);
 
-            // Mark as paid if proof uploaded by buyer
-            if ($trade->buyer_id === $user->id) {
-                $trade->markAsPaid();
-            }
+            // Reload the trade with proofs to return updated data
+            $trade->load('proofs');
 
             return response()->json([
                 'status' => 'success',
                 'message' => 'Payment proof uploaded successfully',
                 'data' => [
                     'proof' => $proof,
-                    'trade' => $trade->fresh()
+                    'trade' => $trade->fresh(['seller', 'buyer', 'proofs'])
                 ]
             ]);
 
@@ -509,7 +492,55 @@ class P2PController extends Controller
         }
     }
 
-    // Confirm payment received (seller confirms) - FIXED VERSION
+    // Mark payment as sent (buyer confirms payment)
+    public function markPaymentAsSent(Request $request, $tradeId)
+    {
+        $user = $request->user();
+
+        // Check if user is KYC verified
+        if (!$user->isKycVerified()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'KYC verification is required for P2P trading'
+            ], 403);
+        }
+        
+        $trade = P2PTrade::processing()
+            ->where('buyer_id', $user->id)
+            ->with('proofs')
+            ->findOrFail($tradeId);
+
+        // Check if proof exists
+        if ($trade->proofs->isEmpty()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Please upload payment proof before marking payment as sent'
+            ], 400);
+        }
+
+        try {
+            // Mark as paid
+            $trade->update([
+                'paid_at' => now(),
+            ]);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Payment marked as sent. Seller has been notified.',
+                'data' => [
+                    'trade' => $trade->fresh(['seller', 'buyer', 'proofs'])
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to mark payment as sent: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // Confirm payment received and release tokens (seller confirms) - FIXED VERSION
     public function confirmPayment(Request $request, $tradeId)
     {
         $user = $request->user();
@@ -525,6 +556,7 @@ class P2PController extends Controller
         $trade = P2PTrade::processing()
             ->where('seller_id', $user->id)
             ->whereNotNull('paid_at')
+            ->with(['seller', 'buyer', 'proofs'])
             ->findOrFail($tradeId);
 
         try {
@@ -572,7 +604,7 @@ class P2PController extends Controller
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Payment confirmed and trade completed',
+                'message' => 'Payment confirmed and tokens released to buyer',
                 'data' => [
                     'trade' => $trade->fresh()
                 ]
@@ -653,7 +685,7 @@ class P2PController extends Controller
         }
     }
 
-    // Replace the deleteTrade method in P2PController.php with this fixed version
+    // Delete trade
     public function deleteTrade(Request $request, $tradeId)
     {
         $user = $request->user();
@@ -688,22 +720,6 @@ class P2PController extends Controller
                 $user->usdc_balance = bcadd($user->usdc_balance, $refundAmount, 8);
                 $user->save();
             }
-
-            // Create transaction record for refund
-            $refundAmount = $trade->type === 'sell' ? $trade->amount : $trade->total;
-            $refundCurrency = $trade->type === 'sell' ? 'CMEME' : 'USDC';
-
-            // Transaction::createP2PTransaction(
-            //     $user,
-            //     $refundAmount,
-            //     "Deleted P2P trade #{$trade->id} - Refund",
-            //     [
-            //         'trade_id' => $trade->id,
-            //         'action' => 'delete_refund',
-            //         'refunded_amount' => $refundAmount,
-            //         'refunded_currency' => $refundCurrency
-            //     ]
-            // );
 
             // Delete the trade
             $trade->delete();

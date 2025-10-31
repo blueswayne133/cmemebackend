@@ -68,10 +68,10 @@ class AdminAuthController extends Controller
                         'id' => $admin->id,
                         'name' => $admin->name,
                         'email' => $admin->email,
-                        'role' => $admin->role,
-                        'permissions' => $admin->permissions,
-                        'is_active' => $admin->is_active,
-                        'last_login_at' => $admin->last_login_at,
+                        // 'role' => $admin->role,
+                        // 'permissions' => $admin->permissions,
+                        // 'is_active' => $admin->is_active,
+                        // 'last_login_at' => $admin->last_login_at,
                     ],
                     'token' => $token
                 ]

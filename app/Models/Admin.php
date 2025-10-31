@@ -4,21 +4,18 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
 class Admin extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasFactory, HasApiTokens;
 
     protected $fillable = [
         'name',
         'email',
         'password',
-        'role',
-        'permissions',
-        'is_active',
-        'last_login_at',
+        'is_super_admin',
+        'permissions'
     ];
 
     protected $hidden = [
@@ -27,23 +24,8 @@ class Admin extends Authenticatable
     ];
 
     protected $casts = [
+        'is_super_admin' => 'boolean',
         'permissions' => 'array',
-        'is_active' => 'boolean',
-        'last_login_at' => 'datetime',
-        'email_verified_at' => 'datetime',
+        // 'email_verified_at' => 'datetime',
     ];
-
-    public function isSuperAdmin(): bool
-    {
-        return $this->role === 'super_admin';
-    }
-
-    public function hasPermission(string $permission): bool
-    {
-        if ($this->isSuperAdmin()) {
-            return true;
-        }
-
-        return in_array($permission, $this->permissions ?? []);
-    }
 }
