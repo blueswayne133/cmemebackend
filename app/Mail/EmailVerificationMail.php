@@ -19,7 +19,7 @@ class EmailVerificationMail extends Mailable
 
     public function build()
     {
-        return $this->subject('Verify Your Email Address - MyToken')
+        return $this->subject('Verify Your Email Address - CMEME Token')
                     ->view('emails.verification')
                     ->with(['code' => $this->verificationCode]);
     }

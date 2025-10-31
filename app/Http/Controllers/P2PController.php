@@ -412,6 +412,10 @@ class P2PController extends Controller
             $tradeArray['payment_method_label'] = $trade->getPaymentMethodLabel();
             $tradeArray['current_user_id'] = $user->id;
             $tradeArray['time_remaining'] = $trade->expires_at ? now()->diffInMinutes($trade->expires_at) . ' min' : null;
+            
+            // Ensure payment details are included
+            $tradeArray['payment_details'] = $trade->payment_details ?? [];
+            
             return $tradeArray;
         });
 
@@ -649,79 +653,75 @@ class P2PController extends Controller
         }
     }
 
+    // Replace the deleteTrade method in P2PController.php with this fixed version
+    public function deleteTrade(Request $request, $tradeId)
+    {
+        $user = $request->user();
 
-
-// Replace the deleteTrade method in P2PController.php with this fixed version
-public function deleteTrade(Request $request, $tradeId)
-{
-    $user = $request->user();
-
-    // Check if user is KYC verified
-    if (!$user->isKycVerified()) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'KYC verification is required for P2P trading'
-        ], 403);
-    }
-
-    $trade = P2PTrade::where('seller_id', $user->id)
-        ->where('status', 'active')
-        ->findOrFail($tradeId);
-
-    try {
-        DB::beginTransaction();
-
-        // Refund locked tokens for sell orders
-        if ($trade->type === 'sell') {
-            // Use precise decimal calculation
-            $refundAmount = $trade->amount;
-            $user->token_balance = bcadd($user->token_balance, $refundAmount, 8);
-            $user->save();
+        // Check if user is KYC verified
+        if (!$user->isKycVerified()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'KYC verification is required for P2P trading'
+            ], 403);
         }
 
-        // Refund locked USDC for buy orders
-        if ($trade->type === 'buy') {
-            // Use precise decimal calculation
-            $refundAmount = $trade->total;
-            $user->usdc_balance = bcadd($user->usdc_balance, $refundAmount, 8);
-            $user->save();
+        $trade = P2PTrade::where('seller_id', $user->id)
+            ->where('status', 'active')
+            ->findOrFail($tradeId);
+
+        try {
+            DB::beginTransaction();
+
+            // Refund locked tokens for sell orders
+            if ($trade->type === 'sell') {
+                // Use precise decimal calculation
+                $refundAmount = $trade->amount;
+                $user->token_balance = bcadd($user->token_balance, $refundAmount, 8);
+                $user->save();
+            }
+
+            // Refund locked USDC for buy orders
+            if ($trade->type === 'buy') {
+                // Use precise decimal calculation
+                $refundAmount = $trade->total;
+                $user->usdc_balance = bcadd($user->usdc_balance, $refundAmount, 8);
+                $user->save();
+            }
+
+            // Create transaction record for refund
+            $refundAmount = $trade->type === 'sell' ? $trade->amount : $trade->total;
+            $refundCurrency = $trade->type === 'sell' ? 'CMEME' : 'USDC';
+
+            // Transaction::createP2PTransaction(
+            //     $user,
+            //     $refundAmount,
+            //     "Deleted P2P trade #{$trade->id} - Refund",
+            //     [
+            //         'trade_id' => $trade->id,
+            //         'action' => 'delete_refund',
+            //         'refunded_amount' => $refundAmount,
+            //         'refunded_currency' => $refundCurrency
+            //     ]
+            // );
+
+            // Delete the trade
+            $trade->delete();
+
+            DB::commit();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Trade deleted successfully. Funds have been refunded.',
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to delete trade: ' . $e->getMessage()
+            ], 500);
         }
-
-        // Create transaction record for refund
-        $refundAmount = $trade->type === 'sell' ? $trade->amount : $trade->total;
-        $refundCurrency = $trade->type === 'sell' ? 'CMEME' : 'USDC';
-
-        // Transaction::createP2PTransaction(
-        //     $user,
-        //     $refundAmount,
-        //     "Deleted P2P trade #{$trade->id} - Refund",
-        //     [
-        //         'trade_id' => $trade->id,
-        //         'action' => 'delete_refund',
-        //         'refunded_amount' => $refundAmount,
-        //         'refunded_currency' => $refundCurrency
-        //     ]
-        // );
-
-        // Delete the trade
-        $trade->delete();
-
-        DB::commit();
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Trade deleted successfully. Funds have been refunded.',
-        ]);
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Failed to delete trade: ' . $e->getMessage()
-        ], 500);
     }
 }
-}
-
-

@@ -15,11 +15,11 @@ use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\WalletController;
 
 // Admin Controllers
-use App\Http\Controllers\Admin\AuthController as AdminAuthController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\AdminTransactionController;
 use App\Http\Controllers\Admin\SettingsController;
+use App\Http\Controllers\Admin\AdminAuthController;
 use App\Http\Controllers\PlatformController;
 use App\Models\Admin;
 use Illuminate\Http\Request;
