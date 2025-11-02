@@ -40,8 +40,19 @@ class TaskController extends Controller
                 ->first();
 
             $currentAttempts = $userTask ? $userTask->attempts_count : 0;
-            $isCompleted = $currentAttempts >= $task->max_attempts_per_day;
-            $remainingAttempts = max(0, $task->max_attempts_per_day - $currentAttempts);
+            
+            // Special handling for wallet task - it's one-time completion
+            if ($task->type === 'connect_wallet') {
+                $walletTaskCompleted = UserTaskProgress::where('user_id', $user->id)
+                    ->where('task_type', 'connect_wallet')
+                    ->exists();
+                $isCompleted = $walletTaskCompleted;
+                $remainingAttempts = $walletTaskCompleted ? 0 : 1;
+            } else {
+                $isCompleted = $currentAttempts >= $task->max_attempts_per_day;
+                $remainingAttempts = max(0, $task->max_attempts_per_day - $currentAttempts);
+            }
+            
             $canComplete = $task->canUserComplete($user);
 
             // Update description for daily streak task to show current streak
@@ -77,6 +88,10 @@ class TaskController extends Controller
                 'can_complete' => $canComplete,
                 'cooldown_minutes' => $task->cooldown_minutes,
                 'sort_order' => $task->sort_order,
+                'action_url' => $task->action_url,
+                'social_platform' => $task->social_platform,
+                'required_content' => $task->required_content,
+                'metadata' => $task->metadata,
             ];
             
             Log::info('Task processed: ' . $task->title, $taskData);
@@ -129,6 +144,25 @@ class TaskController extends Controller
                     }
                     
                     $this->saveSocialHandle($user, $task->type, $socialHandle);
+                }
+
+                // Handle engagement tasks
+                if (in_array($task->type, ['follow', 'like', 'comment', 'share', 'retweet', 'join_telegram', 'join_discord'])) {
+                    $proof = $request->input('proof');
+                    if (!$proof && $task->required_content) {
+                        throw new \Exception('Proof of completion is required for this task.');
+                    }
+                }
+
+                // For wallet task, check if already completed (one-time)
+                if ($task->type === 'connect_wallet') {
+                    $walletTaskCompleted = UserTaskProgress::where('user_id', $user->id)
+                        ->where('task_type', 'connect_wallet')
+                        ->exists();
+                        
+                    if ($walletTaskCompleted) {
+                        throw new \Exception('Wallet connection task already completed.');
+                    }
                 }
 
                 // Get or create today's progress
@@ -225,11 +259,17 @@ class TaskController extends Controller
                 break;
 
             case 'connect_wallet':
+                // For wallet task, check if user has already completed it (one-time)
+                $walletTaskCompleted = UserTaskProgress::where('user_id', $user->id)
+                    ->where('task_type', 'connect_wallet')
+                    ->exists();
+                    
+                if ($walletTaskCompleted) {
+                    return 'Wallet connection task already completed.';
+                }
+                
                 if (!$user->hasConnectedWallet()) {
                     return 'Please connect your wallet first.';
-                }
-                if ($user->hasClaimedWalletBonus()) {
-                    return 'Wallet bonus already claimed.';
                 }
                 break;
         }

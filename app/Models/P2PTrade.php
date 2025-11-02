@@ -62,12 +62,17 @@ class P2PTrade extends Model
 
     public function proofs(): HasMany
     {
-        return $this->hasMany(P2PTradeProof::class);
+        return $this->hasMany(P2PTradeProof::class, 'trade_id');
+    }
+
+    public function messages(): HasMany
+    {
+        return $this->hasMany(P2PTradeMessage::class, 'trade_id');
     }
 
     public function dispute(): HasOne
     {
-        return $this->hasOne(P2PDispute::class);
+        return $this->hasOne(P2PDispute::class, 'trade_id');
     }
 
     // Scopes
@@ -182,6 +187,84 @@ class P2PTrade extends Model
             'other' => 'Other',
             default => ucfirst(str_replace('_', ' ', $this->payment_method))
         };
+    }
+
+    // ADD THESE MISSING METHODS:
+    
+    /**
+     * Get the user's role in this trade
+     */
+    public function getUserRole(User $user): string
+    {
+        if ($this->seller_id === $user->id) {
+            return 'seller';
+        }
+        if ($this->buyer_id === $user->id) {
+            return 'buyer';
+        }
+        return 'observer';
+    }
+
+    /**
+     * Get the counterparty user for this trade
+     */
+    public function getCounterparty(User $user): ?User
+    {
+        if ($this->seller_id === $user->id) {
+            return $this->buyer;
+        }
+        if ($this->buyer_id === $user->id) {
+            return $this->seller;
+        }
+        return null;
+    }
+
+    /**
+     * Check if the user can cancel this trade
+     */
+    public function canBeCancelledBy(User $user): bool
+    {
+        $role = $this->getUserRole($user);
+        
+        if ($this->status === 'active') {
+            return $role === 'seller'; // Only seller can cancel active trades
+        }
+        
+        if ($this->status === 'processing') {
+            return in_array($role, ['seller', 'buyer']); // Both parties can cancel processing trades
+        }
+        
+        return false;
+    }
+
+    /**
+     * Check if the user can upload proof for this trade
+     */
+    public function canUploadProof(User $user): bool
+    {
+        if (!$this->isProcessing()) {
+            return false;
+        }
+        
+        $role = $this->getUserRole($user);
+        
+        // Only buyer can upload payment proof
+        return $role === 'buyer';
+    }
+
+    /**
+     * Check if the user can confirm payment for this trade
+     */
+    public function canConfirmPayment(User $user): bool
+    {
+        if (!$this->isProcessing() || !$this->isPaid()) {
+            return false;
+        }
+        
+        $role = $this->getUserRole($user);
+        
+        // Only seller can confirm payment
+        return $role === 'seller';
     }
 
     // Add this to make time_remaining accessible

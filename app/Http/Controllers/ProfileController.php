@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Setting;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class ProfileController extends Controller
 {
@@ -37,4 +39,30 @@ public function getProfile(Request $request)
             'avatar_url' => $user->avatar_url
         ]);
     }
+
+
+
+
+   public function getDepositWallet(Request $request)
+   {
+    try {
+            $settings = Cache::remember('platform_settings', 3600, function () {
+                return [
+                    'wallet' => Setting::getWalletSettings()
+                ];
+            });
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $settings
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to fetch settings'
+            ], 500);
+        }
+   }
+
+
 }

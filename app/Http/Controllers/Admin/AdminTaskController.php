@@ -4,408 +4,343 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Task;
-use App\Models\User;
 use App\Models\UserTaskProgress;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Validator;
 use Carbon\Carbon;
 
 class AdminTaskController extends Controller
 {
+    /**
+     * Get all tasks with statistics
+     */
     public function index(Request $request)
     {
-        $tasks = Task::withCount(['taskProgress as today_completions' => function($query) {
+        try {
+            $tasks = Task::withCount(['taskProgress as today_completions' => function($query) {
                 $query->whereDate('completion_date', today());
             }])
-            ->with(['taskProgress' => function($query) {
-                $query->whereDate('completion_date', today())
-                      ->with('user');
-            }])
+            ->withCount(['taskProgress as total_completions'])
             ->orderBy('sort_order')
             ->get();
 
-        return response()->json([
-            'status' => 'success',
-            'data' => [
-                'tasks' => $tasks,
-                'summary' => [
-                    'total_tasks' => $tasks->count(),
-                    'active_tasks' => $tasks->where('is_active', true)->count(),
-                    'total_completions_today' => $tasks->sum('today_completions'),
+            $summary = [
+                'total_tasks' => $tasks->count(),
+                'active_tasks' => $tasks->where('is_active', true)->count(),
+                'total_completions_today' => $tasks->sum('today_completions'),
+            ];
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'tasks' => $tasks,
+                    'summary' => $summary
                 ]
-            ]
-        ]);
-    }
-
-    public function create(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'title' => 'required|string|max:255',
-            'description' => 'required|string',
-            'reward_amount' => 'required|numeric|min:0',
-            'reward_type' => 'required|string|in:CMEME,USDC',
-            'type' => 'required|string',
-            'max_attempts_per_day' => 'required|integer|min:1',
-            'cooldown_minutes' => 'required|integer|min:0',
-            'sort_order' => 'required|integer',
-            'is_active' => 'boolean',
-            'is_available' => 'boolean',
-            'metadata' => 'nullable|array',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        try {
-            $task = Task::create($request->all());
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Task created successfully',
-                'data' => ['task' => $task]
             ]);
         } catch (\Exception $e) {
             return response()->json([
-                'status' => 'error',
+                'success' => false,
+                'message' => 'Failed to fetch tasks: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Create a new task
+     */
+    public function create(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'title' => 'required|string|max:255',
+                'description' => 'required|string',
+                'reward_amount' => 'required|numeric|min:0.000001',
+                'reward_type' => 'required|in:CMEME,USDC',
+                'type' => 'required|string',
+                'max_attempts_per_day' => 'required|integer|min:1',
+                'cooldown_minutes' => 'required|integer|min:0',
+                'sort_order' => 'required|integer',
+                'is_active' => 'boolean',
+                'is_available' => 'boolean',
+                'metadata' => 'sometimes|array',
+                'action_url' => 'nullable|url',
+                'social_platform' => 'nullable|string',
+                'required_content' => 'nullable|string'
+            ]);
+
+            $task = Task::create($validated);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Task created successfully',
+                'data' => $task
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
                 'message' => 'Failed to create task: ' . $e->getMessage()
             ], 500);
         }
     }
 
-    public function show($taskId)
+    /**
+     * Get task statistics
+     */
+    public function getTaskStats(Request $request)
     {
-        $task = Task::find($taskId);
-
-        if (!$task) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Task not found'
-            ], 404);
-        }
-
-        return response()->json([
-            'status' => 'success',
-            'data' => ['task' => $task]
-        ]);
-    }
-
-    public function update(Request $request, $taskId)
-    {
-        $task = Task::find($taskId);
-
-        if (!$task) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Task not found'
-            ], 404);
-        }
-
-        $validator = Validator::make($request->all(), [
-            'title' => 'sometimes|required|string|max:255',
-            'description' => 'sometimes|required|string',
-            'reward_amount' => 'sometimes|required|numeric|min:0',
-            'reward_type' => 'sometimes|required|string|in:CMEME,USDC',
-            'type' => 'sometimes|required|string',
-            'max_attempts_per_day' => 'sometimes|required|integer|min:1',
-            'cooldown_minutes' => 'sometimes|required|integer|min:0',
-            'sort_order' => 'sometimes|required|integer',
-            'is_active' => 'sometimes|boolean',
-            'is_available' => 'sometimes|boolean',
-            'metadata' => 'nullable|array',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
         try {
-            $task->update($request->all());
+            $period = $request->get('period', 'today');
+            $stats = Task::getTaskStats($period);
 
             return response()->json([
-                'status' => 'success',
-                'message' => 'Task updated successfully',
-                'data' => ['task' => $task->fresh()]
+                'success' => true,
+                'data' => $stats
             ]);
         } catch (\Exception $e) {
             return response()->json([
-                'status' => 'error',
+                'success' => false,
+                'message' => 'Failed to fetch task stats: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get specific task details
+     */
+    public function show($taskId)
+    {
+        try {
+            $task = Task::withCount(['taskProgress as today_completions' => function($query) {
+                $query->whereDate('completion_date', today());
+            }])
+            ->withCount(['taskProgress as total_completions'])
+            ->findOrFail($taskId);
+
+            return response()->json([
+                'success' => true,
+                'data' => $task
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Task not found'
+            ], 404);
+        }
+    }
+
+    /**
+     * Update a task
+     */
+    public function update(Request $request, $taskId)
+    {
+        try {
+            $task = Task::findOrFail($taskId);
+
+            $validated = $request->validate([
+                'title' => 'sometimes|string|max:255',
+                'description' => 'sometimes|string',
+                'reward_amount' => 'sometimes|numeric|min:0.000001',
+                'reward_type' => 'sometimes|in:CMEME,USDC',
+                'type' => 'sometimes|string',
+                'max_attempts_per_day' => 'sometimes|integer|min:1',
+                'cooldown_minutes' => 'sometimes|integer|min:0',
+                'sort_order' => 'sometimes|integer',
+                'is_active' => 'sometimes|boolean',
+                'is_available' => 'sometimes|boolean',
+                'metadata' => 'sometimes|array',
+                'action_url' => 'nullable|url',
+                'social_platform' => 'nullable|string',
+                'required_content' => 'nullable|string'
+            ]);
+
+            $task->update($validated);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Task updated successfully',
+                'data' => $task
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
                 'message' => 'Failed to update task: ' . $e->getMessage()
             ], 500);
         }
     }
 
+    /**
+     * Delete a task
+     */
     public function delete($taskId)
     {
-        $task = Task::find($taskId);
-
-        if (!$task) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Task not found'
-            ], 404);
-        }
-
         try {
-            // Check if there are any user progress records
-            $progressCount = UserTaskProgress::where('task_id', $taskId)->count();
+            $task = Task::findOrFail($taskId);
             
-            if ($progressCount > 0) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Cannot delete task. There are user progress records associated with this task.'
-                ], 400);
-            }
-
+            // Delete related progress records
+            UserTaskProgress::where('task_id', $taskId)->delete();
+            
             $task->delete();
 
             return response()->json([
-                'status' => 'success',
+                'success' => true,
                 'message' => 'Task deleted successfully'
             ]);
         } catch (\Exception $e) {
             return response()->json([
-                'status' => 'error',
+                'success' => false,
                 'message' => 'Failed to delete task: ' . $e->getMessage()
             ], 500);
         }
     }
 
+    /**
+     * Toggle task status
+     */
     public function toggleStatus($taskId)
     {
-        $task = Task::find($taskId);
-
-        if (!$task) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Task not found'
-            ], 404);
-        }
-
         try {
-            $task->update([
-                'is_active' => !$task->is_active
-            ]);
+            $task = Task::findOrFail($taskId);
+            $task->is_active = !$task->is_active;
+            $task->save();
 
             return response()->json([
-                'status' => 'success',
-                'message' => 'Task status updated successfully',
+                'success' => true,
+                'message' => 'Task status updated',
                 'data' => [
-                    'task' => $task->fresh(),
-                    'new_status' => $task->is_active ? 'active' : 'inactive'
+                    'is_active' => $task->is_active
                 ]
             ]);
         } catch (\Exception $e) {
             return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to update task status: ' . $e->getMessage()
+                'success' => false,
+                'message' => 'Failed to toggle task status: ' . $e->getMessage()
             ], 500);
         }
     }
 
-    public function getUserTasks(Request $request, $userId)
+    /**
+     * Get task progress statistics
+     */
+    public function getTaskProgress($taskId)
     {
-        $user = User::find($userId);
+        try {
+            $task = Task::findOrFail($taskId);
+            
+            $progress = UserTaskProgress::where('task_id', $taskId)
+                ->select([
+                    DB::raw('COUNT(*) as total_attempts'),
+                    DB::raw('COUNT(DISTINCT user_id) as unique_users'),
+                    DB::raw('DATE(completion_date) as date')
+                ])
+                ->groupBy('date')
+                ->orderBy('date', 'desc')
+                ->limit(30)
+                ->get();
 
-        if (!$user) {
             return response()->json([
-                'status' => 'error',
-                'message' => 'User not found'
-            ], 404);
+                'success' => true,
+                'data' => [
+                    'task' => $task,
+                    'progress' => $progress
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch task progress: ' . $e->getMessage()
+            ], 500);
         }
-        
-        $tasks = Task::active()
-            ->with(['taskProgress' => function($query) use ($userId) {
-                $query->where('user_id', $userId)
-                      ->whereDate('completion_date', today());
-            }])
-            ->get()
-            ->map(function ($task) use ($user) {
-                $userTask = $task->taskProgress->first();
-                $currentAttempts = $userTask ? $userTask->attempts_count : 0;
-                
-                return [
-                    'id' => $task->id,
-                    'title' => $task->title,
-                    'description' => $task->description,
-                    'reward_amount' => (float) $task->reward_amount,
-                    'reward_type' => $task->reward_type,
-                    'type' => $task->type,
-                    'max_attempts_per_day' => $task->max_attempts_per_day,
-                    'current_attempts' => $currentAttempts,
-                    'remaining_attempts' => max(0, $task->max_attempts_per_day - $currentAttempts),
-                    'is_completed' => $currentAttempts >= $task->max_attempts_per_day,
-                    'last_completed_at' => $userTask ? $userTask->last_completed_at : null,
-                    'can_complete' => $task->canUserComplete($user),
-                ];
-            });
-
-        return response()->json([
-            'status' => 'success',
-            'data' => [
-                'user' => $user->only(['id', 'username', 'email', 'token_balance', 'mining_streak']),
-                'tasks' => $tasks
-            ]
-        ]);
     }
 
+    /**
+     * Reset user task progress
+     */
     public function resetUserTask(Request $request, $taskId)
     {
-        $request->validate([
-            'user_id' => 'required|exists:users,id'
-        ]);
+        try {
+            $validated = $request->validate([
+                'user_id' => 'required|exists:users,id'
+            ]);
 
-        $userId = $request->user_id;
+            UserTaskProgress::where('task_id', $taskId)
+                ->where('user_id', $validated['user_id'])
+                ->delete();
 
-        $deleted = UserTaskProgress::where('user_id', $userId)
-            ->where('task_id', $taskId)
-            ->whereDate('completion_date', today())
-            ->delete();
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'User task progress reset successfully',
-            'data' => [
-                'reset' => $deleted
-            ]
-        ]);
+            return response()->json([
+                'success' => true,
+                'message' => 'User task progress reset successfully'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to reset user task: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
+    /**
+     * Force complete task for user
+     */
     public function forceCompleteTask(Request $request, $taskId)
     {
-        $request->validate([
-            'user_id' => 'required|exists:users,id'
-        ]);
+        try {
+            $validated = $request->validate([
+                'user_id' => 'required|exists:users,id'
+            ]);
 
-        $userId = $request->user_id;
-        $task = Task::findOrFail($taskId);
+            $task = Task::findOrFail($taskId);
+            $userId = $validated['user_id'];
 
-        DB::transaction(function () use ($userId, $task) {
-            // Get or create today's progress
-            $userTask = UserTaskProgress::where('user_id', $userId)
-                ->where('task_id', $task->id)
-                ->whereDate('completion_date', today())
-                ->first();
+            // Create or update user task progress
+            $userProgress = UserTaskProgress::firstOrNew([
+                'user_id' => $userId,
+                'task_id' => $taskId,
+                'completion_date' => today()
+            ]);
 
-            if ($userTask) {
-                $userTask->increment('attempts_count');
-                $userTask->update(['last_completed_at' => now()]);
-            } else {
-                $userTask = UserTaskProgress::create([
-                    'user_id' => $userId,
-                    'task_id' => $task->id,
-                    'task_type' => $task->type,
-                    'attempts_count' => 1,
-                    'completion_date' => today(),
-                    'last_completed_at' => now(),
-                ]);
-            }
+            $userProgress->attempts_count = $task->max_attempts_per_day;
+            $userProgress->last_completed_at = now();
+            $userProgress->task_type = $task->type;
+            $userProgress->save();
 
-            // Reward user
-            $user = User::find($userId);
-            if ($task->reward_type === 'CMEME') {
-                $user->increment('token_balance', $task->reward_amount);
-            } elseif ($task->reward_type === 'USDC') {
-                $user->increment('usdc_balance', $task->reward_amount);
-            }
-
-            // Update streak for daily streak task
-            if ($task->type === 'daily_streak') {
-                $this->updateUserStreak($user);
-            }
-        });
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Task completed successfully for user',
-            'data' => [
-                'user' => User::find($userId)->fresh()
-            ]
-        ]);
+            return response()->json([
+                'success' => true,
+                'message' => 'Task force completed successfully'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to force complete task: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
-    public function getTaskStats(Request $request)
+    /**
+     * Get available task types
+     */
+    public function getTaskTypes()
     {
-        $period = $request->get('period', 'today'); // today, week, month
-        
-        $query = UserTaskProgress::query();
-        
-        switch ($period) {
-            case 'week':
-                $query->whereBetween('completion_date', [now()->startOfWeek(), now()->endOfWeek()]);
-                break;
-            case 'month':
-                $query->whereBetween('completion_date', [now()->startOfMonth(), now()->endOfMonth()]);
-                break;
-            default: // today
-                $query->whereDate('completion_date', today());
-                break;
-        }
-
-        $stats = $query->select(
-            DB::raw('COUNT(*) as total_completions'),
-            DB::raw('COUNT(DISTINCT user_id) as unique_users'),
-            DB::raw('SUM(attempts_count) as total_attempts')
-        )->first();
-
-        $topTasks = Task::withCount(['taskProgress as completions_count' => function($query) use ($period) {
-                switch ($period) {
-                    case 'week':
-                        $query->whereBetween('completion_date', [now()->startOfWeek(), now()->endOfWeek()]);
-                        break;
-                    case 'month':
-                        $query->whereBetween('completion_date', [now()->startOfMonth(), now()->endOfMonth()]);
-                        break;
-                    default:
-                        $query->whereDate('completion_date', today());
-                        break;
-                }
-            }])
-            ->orderBy('completions_count', 'desc')
-            ->limit(5)
-            ->get();
+        $types = [
+            Task::TYPE_WATCH_ADS => 'Watch Ads',
+            Task::TYPE_DAILY_STREAK => 'Daily Streak',
+            Task::TYPE_CONNECT_TWITTER => 'Connect Twitter',
+            Task::TYPE_CONNECT_TELEGRAM => 'Connect Telegram',
+            Task::TYPE_CONNECT_WALLET => 'Connect Wallet',
+            Task::TYPE_FOLLOW => 'Follow',
+            Task::TYPE_LIKE => 'Like',
+            Task::TYPE_COMMENT => 'Comment',
+            Task::TYPE_SHARE => 'Share',
+            Task::TYPE_RETWEET => 'Retweet',
+            Task::TYPE_JOIN_TELEGRAM => 'Join Telegram',
+            Task::TYPE_JOIN_DISCORD => 'Join Discord',
+            Task::TYPE_DAILY_LOGIN => 'Daily Login',
+            Task::TYPE_REFER_FRIEND => 'Refer Friend',
+            Task::TYPE_SOCIAL_SHARE => 'Social Share'
+        ];
 
         return response()->json([
-            'status' => 'success',
-            'data' => [
-                'period' => $period,
-                'stats' => $stats,
-                'top_tasks' => $topTasks,
-                'date_range' => [
-                    'start' => $period === 'today' ? today() : 
-                              ($period === 'week' ? now()->startOfWeek() : now()->startOfMonth()),
-                    'end' => now()
-                ]
-            ]
+            'success' => true,
+            'data' => $types
         ]);
-    }
-
-    private function updateUserStreak(User $user)
-    {
-        $today = today();
-        $yesterday = today()->subDay();
-        
-        $yesterdayCompleted = UserTaskProgress::where('user_id', $user->id)
-            ->whereDate('completion_date', $yesterday)
-            ->exists();
-            
-        $currentStreak = $user->mining_streak ?: 0;
-        
-        if ($yesterdayCompleted) {
-            $newStreak = $currentStreak + 1;
-        } else {
-            $newStreak = 1;
-        }
-        
-        $user->update(['mining_streak' => $newStreak]);
     }
 }

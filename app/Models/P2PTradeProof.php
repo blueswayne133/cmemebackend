@@ -15,7 +15,7 @@ class P2PTradeProof extends Model
      *
      * @var string
      */
-    protected $table = 'p2p_trade_proofs'; // Explicitly set the table name
+    protected $table = 'p2p_trade_proofs'; 
 
     protected $fillable = [
         'trade_id',
@@ -25,9 +25,10 @@ class P2PTradeProof extends Model
         'description',
     ];
 
+    // Fix the relationship - specify the foreign key
     public function trade(): BelongsTo
     {
-        return $this->belongsTo(P2PTrade::class);
+        return $this->belongsTo(P2PTrade::class, 'trade_id');
     }
 
     public function uploadedBy(): BelongsTo
