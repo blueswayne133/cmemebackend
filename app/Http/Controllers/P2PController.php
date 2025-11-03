@@ -167,24 +167,24 @@ class P2PController extends Controller
         DB::beginTransaction();
 
         if ($trade->type === 'sell') {
-            if ($user->usdc_balance < $trade->total) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Insufficient USDC balance'
-                ], 400);
-            }
+            // if ($user->usdc_balance < $trade->total) {
+            //     return response()->json([
+            //         'status' => 'error',
+            //         'message' => 'Insufficient USDC balance'
+            //     ], 400);
+            // }
 
             $user->usdc_balance -= $trade->total;
             $user->save();
         }
 
         if ($trade->type === 'buy') {
-            if ($user->token_balance < $trade->amount) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Insufficient CMEME balance'
-                ], 400);
-            }
+            // if ($user->token_balance < $trade->amount) {
+            //     return response()->json([
+            //         'status' => 'error',
+            //         'message' => 'Insufficient CMEME balance'
+            //     ], 400);
+            // }
 
             $user->token_balance -= $trade->amount;
             $user->save();
