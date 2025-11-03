@@ -22,6 +22,7 @@ use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\AdminAuthController;
 use App\Http\Controllers\Admin\AdminController;
 use App\Http\Controllers\Admin\AdminTaskController;
+use App\Http\Controllers\P2PTradeController;
 use App\Http\Controllers\PlatformController;
 use App\Models\Admin;
 use Illuminate\Http\Request;
@@ -72,27 +73,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
 
 
-    // P2P Trading routes
-
-
-    // P2P Trading routes with Pusher
-Route::prefix('p2p')->group(function () {
-    Route::get('/trades', [P2PController::class, 'getTrades']);
-    Route::post('/trades', [P2PController::class, 'createTrade']);
-    Route::get('/trades/user', [P2PController::class, 'getUserTrades']);
-    Route::get('/trades/{tradeId}', [P2PController::class, 'getTradeDetails']);
-    Route::post('/trades/{tradeId}/initiate', [P2PController::class, 'initiateTrade']);
-    Route::post('/trades/{tradeId}/cancel', [P2PController::class, 'cancelTrade']);
-    Route::post('/trades/{tradeId}/upload-proof', [P2PController::class, 'uploadPaymentProof']);
-    Route::post('/trades/{tradeId}/mark-payment-sent', [P2PController::class, 'markPaymentAsSent']);
-    Route::post('/trades/{tradeId}/confirm-payment', [P2PController::class, 'confirmPayment']);
-    Route::post('/trades/{tradeId}/dispute', [P2PController::class, 'createDispute']);
-    Route::post('/trades/{tradeId}/message', [P2PController::class, 'sendMessage']);
-    Route::delete('/trades/{tradeId}', [P2PController::class, 'deleteTrade']);
-    
-    // Expired trades check (for cron job)
-    Route::post('/check-expired-trades', [P2PController::class, 'checkExpiredTrades']);
-});
+  
 // Add this to your P2P routes section in api.php
 // Route::prefix('p2p')->group(function () {
 //     Route::get('/trades', [P2PController::class, 'getTrades']);
@@ -172,6 +153,50 @@ Route::get('/history', [DepositController::class, 'getDepositHistory']);
 
 
     
+});
+
+
+// P2P Trading Routes
+Route::middleware(['auth:sanctum'])->prefix('p2p')->group(function () {
+    
+    // Get all active trades with filters
+    Route::get('/trades', [P2PController::class, 'getTrades']);
+    
+    // Get user's trades (active, history, etc.)
+    Route::get('/trades/user', [P2PController::class, 'getUserTrades']);
+    
+    // Create new trade
+    Route::post('/trades', [P2PController::class, 'createTrade']);
+    
+    // Initiate/start a trade (buyer starts the trade)
+    Route::post('/trades/{tradeId}/initiate', [P2PController::class, 'initiateTrade']);
+    
+    // Upload payment proof
+    Route::post('/trades/{tradeId}/upload-proof', [P2PController::class, 'uploadPaymentProof']);
+    
+    // Mark payment as sent
+    Route::post('/trades/{tradeId}/mark-payment-sent', [P2PController::class, 'markPaymentAsSent']);
+    
+    // Confirm payment received (seller confirms)
+    Route::post('/trades/{tradeId}/confirm-payment', [P2PController::class, 'confirmPayment']);
+    
+    // Reject payment (seller rejects) ← ADD THIS ENDPOINT
+    Route::post('/trades/{tradeId}/reject-payment', [P2PController::class, 'rejectPayment']);
+    
+    // Cancel trade
+    Route::post('/trades/{tradeId}/cancel', [P2PController::class, 'cancelTrade']);
+    
+    // Delete trade (only for active trades by creator)
+    Route::delete('/trades/{tradeId}', [P2PController::class, 'deleteTrade']);
+    
+    // Trade messages/chat
+    Route::post('/trades/{tradeId}/message', [P2PController::class, 'sendMessage']);
+    
+    // Create dispute
+    Route::post('/trades/{tradeId}/dispute', [P2PController::class, 'createDispute']);
+    
+    // Get trade details with messages
+    Route::get('/trades/{tradeId}', [P2PController::class, 'getTradeDetails']);
 });
 
 

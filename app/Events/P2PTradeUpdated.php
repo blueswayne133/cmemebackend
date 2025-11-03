@@ -15,26 +15,26 @@ class P2PTradeUpdated implements ShouldBroadcast
 
     public $trade;
 
-    public function __construct(P2PTrade $trade)
-    {
-        $this->trade = $trade->load(['seller', 'buyer', 'proofs', 'dispute']);
-    }
+    // public function __construct(P2PTrade $trade)
+    // {
+    //     $this->trade = $trade->load(['seller', 'buyer', 'proofs', 'dispute']);
+    // }
 
-    public function broadcastOn()
-    {
-        return new Channel('p2p-trades');
-    }
+    // public function broadcastOn()
+    // {
+    //     return new Channel('p2p-trades');
+    // }
 
-    public function broadcastAs()
-    {
-        return 'P2PTradeUpdated';
-    }
+    // public function broadcastAs()
+    // {
+    //     return 'P2PTradeUpdated';
+    // }
 
-    public function broadcastWith()
-    {
-        return [
-            'trade' => $this->trade,
-            'timestamp' => now()->toISOString()
-        ];
-    }
+    // public function broadcastWith()
+    // {
+    //     return [
+    //         'trade' => $this->trade,
+    //         'timestamp' => now()->toISOString()
+    //     ];
+    // }
 }
