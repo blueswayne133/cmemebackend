@@ -95,19 +95,8 @@ class P2PController extends Controller
                 $user->save();
             }
 
-            // For buy orders, check USDC balance
-            if ($request->type === 'buy') {
-                if ($user->usdc_balance < $total) {
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => 'Insufficient USDC balance'
-                    ], 400);
-                }
-
-                // Lock USDC
-                $user->usdc_balance -= $total;
-                $user->save();
-            }
+          
+         
 
             $trade = P2PTrade::create([
                 'seller_id' => $user->id,
@@ -166,29 +155,6 @@ class P2PController extends Controller
     try {
         DB::beginTransaction();
 
-        if ($trade->type === 'sell') {
-            // if ($user->usdc_balance < $trade->total) {
-            //     return response()->json([
-            //         'status' => 'error',
-            //         'message' => 'Insufficient USDC balance'
-            //     ], 400);
-            // }
-
-            $user->usdc_balance -= $trade->total;
-            $user->save();
-        }
-
-        if ($trade->type === 'buy') {
-            // if ($user->token_balance < $trade->amount) {
-            //     return response()->json([
-            //         'status' => 'error',
-            //         'message' => 'Insufficient CMEME balance'
-            //     ], 400);
-            // }
-
-            $user->token_balance -= $trade->amount;
-            $user->save();
-        }
 
         // ✅ Ensure time_limit is valid
         $timeLimit = $trade->time_limit ?? 30;
