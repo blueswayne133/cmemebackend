@@ -81,7 +81,7 @@ class P2PController extends Controller
 
             $total = $request->amount * $request->price;
 
-            // For sell orders, check token balance
+            // For sell orders, check and lock token balance
             if ($request->type === 'sell') {
                 if ($user->token_balance < $request->amount) {
                     return response()->json([
@@ -90,13 +90,10 @@ class P2PController extends Controller
                     ], 400);
                 }
 
-                // Lock tokens by reducing balance
+                // Lock tokens by reducing balance for sell orders
                 $user->token_balance -= $request->amount;
                 $user->save();
             }
-
-          
-         
 
             $trade = P2PTrade::create([
                 'seller_id' => $user->id,
@@ -130,191 +127,144 @@ class P2PController extends Controller
         }
     }
 
-   public function initiateTrade(Request $request, $tradeId)
-{
-    $user = $request->user();
+    public function initiateTrade(Request $request, $tradeId)
+    {
+        $user = $request->user();
 
-    if (!$user->isKycVerified()) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'KYC verification is required to initiate P2P trades'
-        ], 403);
+        if (!$user->isKycVerified()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'KYC verification is required to initiate P2P trades'
+            ], 403);
+        }
+
+        $trade = P2PTrade::where('status', 'active')
+            ->with(['seller'])
+            ->findOrFail($tradeId);
+
+        if ($trade->seller_id === $user->id) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'You cannot initiate trade with yourself'
+            ], 400);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            // CORRECTED LOGIC:
+            if ($trade->type === 'sell') {
+                // SELL ORDER: Seller wants to SELL CMEME, Buyer wants to BUY CMEME
+                // Buyer needs USD to pay seller, no token lock needed for buyer
+                // Seller's tokens are already locked when creating the sell order
+                
+            } else {
+                // BUY ORDER: Seller wants to BUY CMEME, Buyer wants to SELL CMEME  
+                // Buyer needs CMEME tokens to sell to the seller
+                if ($user->token_balance < $trade->amount) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Insufficient CMEME balance to sell. You need ' . $trade->amount . ' CMEME.'
+                    ], 400);
+                }
+                
+                // Lock buyer's CMEME tokens for buy orders
+                $user->token_balance -= $trade->amount;
+                $user->save();
+            }
+
+            $timeLimit = $trade->time_limit ?? 30;
+
+            $trade->update([
+                'buyer_id' => $user->id,
+                'status' => 'processing',
+                'expires_at' => now()->addMinutes((int) $timeLimit),
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Trade initiated successfully',
+                'data' => [
+                    'trade' => $trade->load(['seller', 'buyer'])
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to initiate trade: ' . $e->getMessage()
+            ], 500);
+        }
     }
-
-    $trade = P2PTrade::where('status', 'active')
-        ->with(['seller'])
-        ->findOrFail($tradeId);
-
-    if ($trade->seller_id === $user->id) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'You cannot initiate trade with yourself'
-        ], 400);
-    }
-
-    try {
-        DB::beginTransaction();
-
-
-        // ✅ Ensure time_limit is valid
-        $timeLimit = $trade->time_limit ?? 30;
-
-        $trade->update([
-            'buyer_id' => $user->id,
-            'status' => 'processing',
-            'expires_at' => now()->addMinutes((int) $timeLimit),
-        ]);
-
-        DB::commit();
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Trade initiated successfully',
-            'data' => [
-                'trade' => $trade->load(['seller', 'buyer'])
-            ]
-        ]);
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Failed to initiate trade: ' . $e->getMessage()
-        ], 500);
-    }
-}
-
 
     public function uploadPaymentProof(Request $request, $tradeId)
-{
-    $user = $request->user();
+    {
+        $user = $request->user();
 
-    if (!$user->isKycVerified()) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'KYC verification is required for P2P trading'
-        ], 403);
-    }
-    
-    $trade = P2PTrade::where('status', 'processing')
-        ->where(function($query) use ($user) {
-            $query->where('seller_id', $user->id)
-                  ->orWhere('buyer_id', $user->id);
-        })
-        ->findOrFail($tradeId);
-
-    $validator = Validator::make($request->all(), [
-        'proof_file' => 'required|image|mimes:jpeg,png,jpg,gif|max:5120',
-        'description' => 'nullable|string|max:500',
-    ]);
-
-    if ($validator->fails()) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Validation failed',
-            'errors' => $validator->errors()
-        ], 422);
-    }
-
-    try {
-        $file = $request->file('proof_file');
-        $filename = 'p2p/proofs/' . $trade->id . '/' . uniqid() . '.' . $file->getClientOriginalExtension();
+        if (!$user->isKycVerified()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'KYC verification is required for P2P trading'
+            ], 403);
+        }
         
-        // Store in public disk - this is the key change
-        $path = $file->storeAs('p2p/proofs/' . $trade->id, $filename, 'public');
+        $trade = P2PTrade::where('status', 'processing')
+            ->where(function($query) use ($user) {
+                $query->where('seller_id', $user->id)
+                      ->orWhere('buyer_id', $user->id);
+            })
+            ->findOrFail($tradeId);
 
-        $proof = P2PTradeProof::create([
-            'trade_id' => $trade->id,
-            'uploaded_by' => $user->id,
-            'proof_type' => 'payment_proof',
-            'file_path' => $filename,
-            'description' => $request->description,
+        $validator = Validator::make($request->all(), [
+            'proof_file' => 'required|image|mimes:jpeg,png,jpg,gif|max:5120',
+            'description' => 'nullable|string|max:500',
         ]);
 
-        $trade->load('proofs');
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
+        }
 
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Payment proof uploaded successfully',
-            'data' => [
-                'proof' => $proof,
-                'file_url' => Storage::url($filename), // This will generate the correct URL
-                'trade' => $trade->fresh(['seller', 'buyer', 'proofs'])
-            ]
-        ]);
-
-    } catch (\Exception $e) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Failed to upload proof: ' . $e->getMessage()
-        ], 500);
-    }
-}
-
-    // public function uploadPaymentProof(Request $request, $tradeId)
-    // {
-    //     $user = $request->user();
-
-    //     if (!$user->isKycVerified()) {
-    //         return response()->json([
-    //             'status' => 'error',
-    //             'message' => 'KYC verification is required for P2P trading'
-    //         ], 403);
-    //     }
-        
-    //     $trade = P2PTrade::where('status', 'processing')
-    //         ->where(function($query) use ($user) {
-    //             $query->where('seller_id', $user->id)
-    //                   ->orWhere('buyer_id', $user->id);
-    //         })
-    //         ->findOrFail($tradeId);
-
-    //     $validator = Validator::make($request->all(), [
-    //         'proof_file' => 'required|image|mimes:jpeg,png,jpg,gif|max:5120',
-    //         'description' => 'nullable|string|max:500',
-    //     ]);
-
-    //     if ($validator->fails()) {
-    //         return response()->json([
-    //             'status' => 'error',
-    //             'message' => 'Validation failed',
-    //             'errors' => $validator->errors()
-    //         ], 422);
-    //     }
-
-    //     try {
-    //         $file = $request->file('proof_file');
-    //         $filename = 'p2p/proofs/' . $trade->id . '/' . uniqid() . '.' . $file->getClientOriginalExtension();
+        try {
+            $file = $request->file('proof_file');
+            $filename = 'p2p/proofs/' . $trade->id . '/' . uniqid() . '.' . $file->getClientOriginalExtension();
             
-    //         $path = $file->storeAs('public', $filename);
+            // Store in public disk
+            $path = $file->storeAs('p2p/proofs/' . $trade->id, $filename, 'public');
 
-    //         $proof = P2PTradeProof::create([
-    //             'trade_id' => $trade->id,
-    //             'uploaded_by' => $user->id,
-    //             'proof_type' => 'payment_proof',
-    //             'file_path' => $filename,
-    //             'description' => $request->description,
-    //         ]);
+            $proof = P2PTradeProof::create([
+                'trade_id' => $trade->id,
+                'uploaded_by' => $user->id,
+                'proof_type' => 'payment_proof',
+                'file_path' => $filename,
+                'description' => $request->description,
+            ]);
 
-    //         $trade->load('proofs');
+            $trade->load('proofs');
 
-    //         return response()->json([
-    //             'status' => 'success',
-    //             'message' => 'Payment proof uploaded successfully',
-    //             'data' => [
-    //                 'proof' => $proof,
-    //                 'file_url' => Storage::url($filename),
-    //                 'trade' => $trade->fresh(['seller', 'buyer', 'proofs'])
-    //             ]
-    //         ]);
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Payment proof uploaded successfully',
+                'data' => [
+                    'proof' => $proof,
+                    'file_url' => Storage::url($filename),
+                    'trade' => $trade->fresh(['seller', 'buyer', 'proofs'])
+                ]
+            ]);
 
-    //     } catch (\Exception $e) {
-    //         return response()->json([
-    //             'status' => 'error',
-    //             'message' => 'Failed to upload proof: ' . $e->getMessage()
-    //         ], 500);
-    //     }
-    // }
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to upload proof: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 
     public function markPaymentAsSent(Request $request, $tradeId)
     {
@@ -328,9 +278,31 @@ class P2PController extends Controller
         }
         
         $trade = P2PTrade::where('status', 'processing')
-            ->where('buyer_id', $user->id)
+            ->where(function($query) use ($user) {
+                $query->where('seller_id', $user->id)
+                      ->orWhere('buyer_id', $user->id);
+            })
             ->with(['seller', 'buyer', 'proofs'])
             ->findOrFail($tradeId);
+
+        // CORRECTED LOGIC: Check who should be marking payment as sent
+        if ($trade->type === 'sell') {
+            // SELL ORDER: Buyer pays USD to seller, so BUYER marks payment as sent
+            if ($trade->buyer_id !== $user->id) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Only buyer can mark payment as sent for sell orders'
+                ], 403);
+            }
+        } else {
+            // BUY ORDER: Seller pays USD to buyer, so SELLER marks payment as sent
+            if ($trade->seller_id !== $user->id) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Only seller can mark payment as sent for buy orders'
+                ], 403);
+            }
+        }
 
         if ($trade->proofs->isEmpty()) {
             return response()->json([
@@ -350,7 +322,7 @@ class P2PController extends Controller
             P2PTradeMessage::create([
                 'trade_id' => $trade->id,
                 'user_id' => $user->id,
-                'message' => "Buyer marked payment as sent. Waiting for seller confirmation.",
+                'message' => "Payment marked as sent. Waiting for counterparty confirmation.",
                 'type' => 'system',
                 'is_system' => true
             ]);
@@ -359,7 +331,7 @@ class P2PController extends Controller
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Payment marked as sent. Seller has been notified.',
+                'message' => 'Payment marked as sent. Counterparty has been notified.',
                 'data' => [
                     'trade' => $trade->fresh(['seller', 'buyer', 'proofs'])
                 ]
@@ -380,23 +352,48 @@ class P2PController extends Controller
             $user = $request->user();
 
             $trade = P2PTrade::where('status', 'processing')
-                ->where('seller_id', $user->id)
                 ->whereNotNull('paid_at')
                 ->with(['seller', 'buyer'])
-                ->firstOrFail();
+                ->findOrFail($tradeId);
+
+            // CORRECTED LOGIC: Check who should be confirming payment
+            if ($trade->type === 'sell') {
+                // SELL ORDER: Seller confirms they received USD and releases CMEME to buyer
+                if ($trade->seller_id !== $user->id) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Only seller can confirm payment for sell orders'
+                    ], 403);
+                }
+            } else {
+                // BUY ORDER: Buyer confirms they received USD and releases CMEME to seller
+                if ($trade->buyer_id !== $user->id) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Only buyer can confirm payment for buy orders'
+                    ], 403);
+                }
+            }
 
             DB::beginTransaction();
 
-            // Transfer tokens to buyer
-            $buyer = User::find($trade->buyer_id);
-            $buyer->token_balance += $trade->amount;
-            $buyer->save();
-
-            // Transfer USDC to seller for sell orders
             if ($trade->type === 'sell') {
+                // SELL ORDER: Transfer CMEME from seller to buyer
+                $buyer = User::find($trade->buyer_id);
+                $buyer->token_balance += $trade->amount;
+                $buyer->save();
+                
+                // Seller's tokens were already locked when creating the trade
+                // No need to deduct from seller again
+                
+            } else {
+                // BUY ORDER: Transfer CMEME from buyer to seller
                 $seller = User::find($trade->seller_id);
-                $seller->usdc_balance += $trade->total;
+                $seller->token_balance += $trade->amount;
                 $seller->save();
+                
+                // Buyer's tokens were locked when initiating the trade
+                // No need to deduct from buyer again
             }
 
             // Update trade status
@@ -409,7 +406,7 @@ class P2PController extends Controller
             P2PTradeMessage::create([
                 'trade_id' => $trade->id,
                 'user_id' => $user->id,
-                'message' => "Seller confirmed payment. Tokens released to buyer.",
+                'message' => "Payment confirmed! Tokens released.",
                 'type' => 'system',
                 'is_system' => true
             ]);
@@ -422,7 +419,7 @@ class P2PController extends Controller
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Payment confirmed! Tokens released to buyer.',
+                'message' => 'Payment confirmed! Tokens released.',
                 'data' => [
                     'trade' => $trade->fresh()
                 ]
@@ -443,10 +440,28 @@ class P2PController extends Controller
             $user = $request->user();
 
             $trade = P2PTrade::where('status', 'processing')
-                ->where('seller_id', $user->id)
                 ->whereNotNull('paid_at')
                 ->with(['seller', 'buyer', 'proofs'])
-                ->firstOrFail();
+                ->firstOrFail($tradeId);
+
+            // CORRECTED LOGIC: Check who should be rejecting payment
+            if ($trade->type === 'sell') {
+                // SELL ORDER: Seller rejects payment
+                if ($trade->seller_id !== $user->id) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Only seller can reject payment for sell orders'
+                    ], 403);
+                }
+            } else {
+                // BUY ORDER: Buyer rejects payment
+                if ($trade->buyer_id !== $user->id) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Only buyer can reject payment for buy orders'
+                    ], 403);
+                }
+            }
 
             $validator = Validator::make($request->all(), [
                 'reason' => 'required|string|max:1000',
@@ -462,17 +477,26 @@ class P2PController extends Controller
 
             DB::beginTransaction();
 
+            // Refund tokens based on trade type when payment is rejected
+            if ($trade->type === 'buy') {
+                // For buy orders: refund CMEME tokens to buyer
+                if ($trade->buyer_id) {
+                    User::where('id', $trade->buyer_id)->increment('token_balance', $trade->amount);
+                }
+            }
+            // For sell orders, tokens remain with seller (they were locked initially)
+
             // Mark trade as disputed when payment is rejected
             $trade->update([
                 'status' => 'disputed',
-                'cancellation_reason' => "Payment rejected by seller: " . $request->reason,
+                'cancellation_reason' => "Payment rejected: " . $request->reason,
             ]);
 
             // Create system message
             P2PTradeMessage::create([
                 'trade_id' => $trade->id,
                 'user_id' => $user->id,
-                'message' => "Seller rejected the payment. Reason: {$request->reason}",
+                'message' => "Payment rejected. Reason: {$request->reason}",
                 'type' => 'system',
                 'is_system' => true
             ]);
@@ -481,7 +505,7 @@ class P2PController extends Controller
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Payment rejected. Buyer has been notified and can file a dispute.',
+                'message' => 'Payment rejected. Counterparty has been notified.',
                 'data' => [
                     'trade' => $trade->fresh()
                 ]
@@ -532,17 +556,13 @@ class P2PController extends Controller
 
             $isSeller = $trade->seller_id === $user->id;
 
-            // Refund logic based on trade status and user role
+            // Refund logic based on trade status, type, and user role
             if ($trade->status === 'processing') {
                 if ($trade->type === 'sell') {
-                    // Refund tokens to seller, USDC to buyer
+                    // SELL ORDER: Refund CMEME to seller
                     User::where('id', $trade->seller_id)->increment('token_balance', $trade->amount);
-                    if ($trade->buyer_id) {
-                        User::where('id', $trade->buyer_id)->increment('usdc_balance', $trade->total);
-                    }
                 } else {
-                    // Refund USDC to seller, tokens to buyer
-                    User::where('id', $trade->seller_id)->increment('usdc_balance', $trade->total);
+                    // BUY ORDER: Refund CMEME to buyer
                     if ($trade->buyer_id) {
                         User::where('id', $trade->buyer_id)->increment('token_balance', $trade->amount);
                     }
@@ -550,12 +570,10 @@ class P2PController extends Controller
             } else if ($trade->status === 'active') {
                 if ($isSeller) {
                     if ($trade->type === 'sell') {
-                        // Refund locked tokens to seller
+                        // Refund locked CMEME tokens to seller
                         User::where('id', $trade->seller_id)->increment('token_balance', $trade->amount);
-                    } else {
-                        // Refund locked USDC to seller
-                        User::where('id', $trade->seller_id)->increment('usdc_balance', $trade->total);
                     }
+                    // For buy orders in active status, no tokens are locked yet
                 }
             }
 
@@ -637,13 +655,12 @@ class P2PController extends Controller
         try {
             DB::beginTransaction();
 
-            // Refund locked tokens/USDC
+            // Refund locked tokens for sell orders
             if ($trade->type === 'sell') {
                 $user->token_balance += $trade->amount;
-            } else {
-                $user->usdc_balance += $trade->total;
+                $user->save();
             }
-            $user->save();
+            // For buy orders, no tokens are locked in active status
 
             $trade->delete();
 
