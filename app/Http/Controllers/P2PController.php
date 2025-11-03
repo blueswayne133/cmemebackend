@@ -152,11 +152,11 @@ class P2PController extends Controller
         try {
             DB::beginTransaction();
 
-            // CORRECTED LOGIC:
+            // CORRECTED TOKEN LOCKING LOGIC:
             if ($trade->type === 'sell') {
                 // SELL ORDER: Seller wants to SELL CMEME, Buyer wants to BUY CMEME
-                // Buyer needs USD to pay seller, no token lock needed for buyer
                 // Seller's tokens are already locked when creating the sell order
+                // Buyer doesn't need token lock - they pay USD
                 
             } else {
                 // BUY ORDER: Seller wants to BUY CMEME, Buyer wants to SELL CMEME  
@@ -179,6 +179,15 @@ class P2PController extends Controller
                 'buyer_id' => $user->id,
                 'status' => 'processing',
                 'expires_at' => now()->addMinutes((int) $timeLimit),
+            ]);
+
+            // Create system message for trade initiation
+            P2PTradeMessage::create([
+                'trade_id' => $trade->id,
+                'user_id' => $user->id,
+                'message' => "Trade initiated successfully. Please proceed with payment.",
+                'type' => 'system',
+                'is_system' => true
             ]);
 
             DB::commit();
@@ -244,6 +253,15 @@ class P2PController extends Controller
                 'proof_type' => 'payment_proof',
                 'file_path' => $filename,
                 'description' => $request->description,
+            ]);
+
+            // Create system message for proof upload
+            P2PTradeMessage::create([
+                'trade_id' => $trade->id,
+                'user_id' => $user->id,
+                'message' => "Payment proof uploaded successfully.",
+                'type' => 'system',
+                'is_system' => true
             ]);
 
             $trade->load('proofs');
@@ -406,7 +424,7 @@ class P2PController extends Controller
             P2PTradeMessage::create([
                 'trade_id' => $trade->id,
                 'user_id' => $user->id,
-                'message' => "Payment confirmed! Tokens released.",
+                'message' => "Payment confirmed! Tokens released successfully.",
                 'type' => 'system',
                 'is_system' => true
             ]);
@@ -616,7 +634,7 @@ class P2PController extends Controller
         $user = $request->user();
         $status = $request->get('status', 'all');
 
-        $query = P2PTrade::with(['seller', 'buyer', 'proofs'])
+        $query = P2PTrade::with(['seller', 'buyer', 'proofs', 'messages.user'])
             ->where(function($query) use ($user) {
                 $query->where('seller_id', $user->id)
                       ->orWhere('buyer_id', $user->id);
@@ -838,4 +856,88 @@ class P2PController extends Controller
             $user->save();
         }
     }
+
+
+
+
+    public function updatePaymentDetails(Request $request, $tradeId)
+{
+    $user = $request->user();
+
+    if (!$user->isKycVerified()) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'KYC verification is required for P2P trading'
+        ], 403);
+    }
+    
+    $trade = P2PTrade::where('status', 'processing')
+        ->where(function($query) use ($user) {
+            $query->where('seller_id', $user->id)
+                  ->orWhere('buyer_id', $user->id);
+        })
+        ->findOrFail($tradeId);
+
+    $validator = Validator::make($request->all(), [
+        'bank_name' => 'nullable|string|max:255',
+        'account_number' => 'required|string|max:100',
+        'account_name' => 'required|string|max:255',
+        'routing_number' => 'nullable|string|max:50',
+        'swift_code' => 'nullable|string|max:50',
+        'additional_notes' => 'nullable|string|max:1000',
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Validation failed',
+            'errors' => $validator->errors()
+        ], 422);
+    }
+
+    try {
+        DB::beginTransaction();
+
+        // Store payment details
+        $paymentDetails = [
+            'bank_name' => $request->bank_name,
+            'account_number' => $request->account_number,
+            'account_name' => $request->account_name,
+            'routing_number' => $request->routing_number,
+            'swift_code' => $request->swift_code,
+            'additional_notes' => $request->additional_notes,
+            'updated_at' => now(),
+        ];
+
+        $trade->update([
+            'payment_details' => $paymentDetails,
+        ]);
+
+        // Create system message
+        P2PTradeMessage::create([
+            'trade_id' => $trade->id,
+            'user_id' => $user->id,
+            'message' => "Payment details updated successfully.",
+            'type' => 'system',
+            'is_system' => true
+        ]);
+
+        DB::commit();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Payment details updated successfully',
+            'data' => [
+                'trade' => $trade->fresh(['seller', 'buyer'])
+            ]
+        ]);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Failed to update payment details: ' . $e->getMessage()
+        ], 500);
+    }
+}
 }

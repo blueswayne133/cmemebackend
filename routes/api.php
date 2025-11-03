@@ -183,6 +183,9 @@ Route::middleware(['auth:sanctum'])->prefix('p2p')->group(function () {
     
     // Get trade details with messages
     Route::get('/trades/{tradeId}', [P2PController::class, 'getTradeDetails']);
+
+    // Update payment details
+Route::post('/trades/{tradeId}/update-payment-details', [P2PController::class, 'updatePaymentDetails']);
 });
 
 
