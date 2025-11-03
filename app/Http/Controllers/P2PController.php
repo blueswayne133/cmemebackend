@@ -141,83 +141,83 @@ class P2PController extends Controller
         }
     }
 
-    public function initiateTrade(Request $request, $tradeId)
-    {
-        $user = $request->user();
+   public function initiateTrade(Request $request, $tradeId)
+{
+    $user = $request->user();
 
-        if (!$user->isKycVerified()) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'KYC verification is required to initiate P2P trades'
-            ], 403);
-        }
-        
-        $trade = P2PTrade::where('status', 'active')
-            ->with(['seller'])
-            ->findOrFail($tradeId);
-
-        if ($trade->seller_id === $user->id) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'You cannot initiate trade with yourself'
-            ], 400);
-        }
-
-        try {
-            DB::beginTransaction();
-
-            // For sell orders (user is buying), check USDC balance
-            if ($trade->type === 'sell') {
-                if ($user->usdc_balance < $trade->total) {
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => 'Insufficient USDC balance'
-                    ], 400);
-                }
-
-                // Lock USDC for trade
-                $user->usdc_balance -= $trade->total;
-                $user->save();
-            }
-
-            // For buy orders (user is selling), check token balance
-            if ($trade->type === 'buy') {
-                if ($user->token_balance < $trade->amount) {
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => 'Insufficient CMEME balance'
-                    ], 400);
-                }
-
-                // Lock tokens for trade
-                $user->token_balance -= $trade->amount;
-                $user->save();
-            }
-
-            $trade->update([
-                'buyer_id' => $user->id,
-                'status' => 'processing',
-                'expires_at' => now()->addMinutes($trade->time_limit),
-            ]);
-
-            DB::commit();
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Trade initiated successfully',
-                'data' => [
-                    'trade' => $trade->load(['seller', 'buyer'])
-                ]
-            ]);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to initiate trade: ' . $e->getMessage()
-            ], 500);
-        }
+    if (!$user->isKycVerified()) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'KYC verification is required to initiate P2P trades'
+        ], 403);
     }
+
+    $trade = P2PTrade::where('status', 'active')
+        ->with(['seller'])
+        ->findOrFail($tradeId);
+
+    if ($trade->seller_id === $user->id) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'You cannot initiate trade with yourself'
+        ], 400);
+    }
+
+    try {
+        DB::beginTransaction();
+
+        if ($trade->type === 'sell') {
+            if ($user->usdc_balance < $trade->total) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Insufficient USDC balance'
+                ], 400);
+            }
+
+            $user->usdc_balance -= $trade->total;
+            $user->save();
+        }
+
+        if ($trade->type === 'buy') {
+            if ($user->token_balance < $trade->amount) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Insufficient CMEME balance'
+                ], 400);
+            }
+
+            $user->token_balance -= $trade->amount;
+            $user->save();
+        }
+
+        // ✅ Ensure time_limit is valid
+        $timeLimit = $trade->time_limit ?? 30;
+
+        $trade->update([
+            'buyer_id' => $user->id,
+            'status' => 'processing',
+            'expires_at' => now()->addMinutes((int) $timeLimit),
+        ]);
+
+        DB::commit();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Trade initiated successfully',
+            'data' => [
+                'trade' => $trade->load(['seller', 'buyer'])
+            ]
+        ]);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Failed to initiate trade: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
 
     public function uploadPaymentProof(Request $request, $tradeId)
 {
