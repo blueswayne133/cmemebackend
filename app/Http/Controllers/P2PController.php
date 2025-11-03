@@ -220,69 +220,135 @@ class P2PController extends Controller
     }
 
     public function uploadPaymentProof(Request $request, $tradeId)
-    {
-        $user = $request->user();
+{
+    $user = $request->user();
 
-        if (!$user->isKycVerified()) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'KYC verification is required for P2P trading'
-            ], 403);
-        }
+    if (!$user->isKycVerified()) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'KYC verification is required for P2P trading'
+        ], 403);
+    }
+    
+    $trade = P2PTrade::where('status', 'processing')
+        ->where(function($query) use ($user) {
+            $query->where('seller_id', $user->id)
+                  ->orWhere('buyer_id', $user->id);
+        })
+        ->findOrFail($tradeId);
+
+    $validator = Validator::make($request->all(), [
+        'proof_file' => 'required|image|mimes:jpeg,png,jpg,gif|max:5120',
+        'description' => 'nullable|string|max:500',
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Validation failed',
+            'errors' => $validator->errors()
+        ], 422);
+    }
+
+    try {
+        $file = $request->file('proof_file');
+        $filename = 'p2p/proofs/' . $trade->id . '/' . uniqid() . '.' . $file->getClientOriginalExtension();
         
-        $trade = P2PTrade::where('status', 'processing')
-            ->where(function($query) use ($user) {
-                $query->where('seller_id', $user->id)
-                      ->orWhere('buyer_id', $user->id);
-            })
-            ->findOrFail($tradeId);
+        // Store in public disk - this is the key change
+        $path = $file->storeAs('p2p/proofs/' . $trade->id, $filename, 'public');
 
-        $validator = Validator::make($request->all(), [
-            'proof_file' => 'required|image|mimes:jpeg,png,jpg,gif|max:5120',
-            'description' => 'nullable|string|max:500',
+        $proof = P2PTradeProof::create([
+            'trade_id' => $trade->id,
+            'uploaded_by' => $user->id,
+            'proof_type' => 'payment_proof',
+            'file_path' => $filename,
+            'description' => $request->description,
         ]);
 
-        if ($validator->fails()) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422);
-        }
+        $trade->load('proofs');
 
-        try {
-            $file = $request->file('proof_file');
-            $filename = 'p2p/proofs/' . $trade->id . '/' . uniqid() . '.' . $file->getClientOriginalExtension();
-            
-            $path = $file->storeAs('public', $filename);
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Payment proof uploaded successfully',
+            'data' => [
+                'proof' => $proof,
+                'file_url' => Storage::url($filename), // This will generate the correct URL
+                'trade' => $trade->fresh(['seller', 'buyer', 'proofs'])
+            ]
+        ]);
 
-            $proof = P2PTradeProof::create([
-                'trade_id' => $trade->id,
-                'uploaded_by' => $user->id,
-                'proof_type' => 'payment_proof',
-                'file_path' => $filename,
-                'description' => $request->description,
-            ]);
-
-            $trade->load('proofs');
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Payment proof uploaded successfully',
-                'data' => [
-                    'proof' => $proof,
-                    'file_url' => Storage::url($filename),
-                    'trade' => $trade->fresh(['seller', 'buyer', 'proofs'])
-                ]
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to upload proof: ' . $e->getMessage()
-            ], 500);
-        }
+    } catch (\Exception $e) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Failed to upload proof: ' . $e->getMessage()
+        ], 500);
     }
+}
+
+    // public function uploadPaymentProof(Request $request, $tradeId)
+    // {
+    //     $user = $request->user();
+
+    //     if (!$user->isKycVerified()) {
+    //         return response()->json([
+    //             'status' => 'error',
+    //             'message' => 'KYC verification is required for P2P trading'
+    //         ], 403);
+    //     }
+        
+    //     $trade = P2PTrade::where('status', 'processing')
+    //         ->where(function($query) use ($user) {
+    //             $query->where('seller_id', $user->id)
+    //                   ->orWhere('buyer_id', $user->id);
+    //         })
+    //         ->findOrFail($tradeId);
+
+    //     $validator = Validator::make($request->all(), [
+    //         'proof_file' => 'required|image|mimes:jpeg,png,jpg,gif|max:5120',
+    //         'description' => 'nullable|string|max:500',
+    //     ]);
+
+    //     if ($validator->fails()) {
+    //         return response()->json([
+    //             'status' => 'error',
+    //             'message' => 'Validation failed',
+    //             'errors' => $validator->errors()
+    //         ], 422);
+    //     }
+
+    //     try {
+    //         $file = $request->file('proof_file');
+    //         $filename = 'p2p/proofs/' . $trade->id . '/' . uniqid() . '.' . $file->getClientOriginalExtension();
+            
+    //         $path = $file->storeAs('public', $filename);
+
+    //         $proof = P2PTradeProof::create([
+    //             'trade_id' => $trade->id,
+    //             'uploaded_by' => $user->id,
+    //             'proof_type' => 'payment_proof',
+    //             'file_path' => $filename,
+    //             'description' => $request->description,
+    //         ]);
+
+    //         $trade->load('proofs');
+
+    //         return response()->json([
+    //             'status' => 'success',
+    //             'message' => 'Payment proof uploaded successfully',
+    //             'data' => [
+    //                 'proof' => $proof,
+    //                 'file_url' => Storage::url($filename),
+    //                 'trade' => $trade->fresh(['seller', 'buyer', 'proofs'])
+    //             ]
+    //         ]);
+
+    //     } catch (\Exception $e) {
+    //         return response()->json([
+    //             'status' => 'error',
+    //             'message' => 'Failed to upload proof: ' . $e->getMessage()
+    //         ], 500);
+    //     }
+    // }
 
     public function markPaymentAsSent(Request $request, $tradeId)
     {
