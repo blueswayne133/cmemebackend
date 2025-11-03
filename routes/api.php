@@ -74,20 +74,6 @@ Route::middleware('auth:sanctum')->group(function () {
 
 
   
-// Add this to your P2P routes section in api.php
-// Route::prefix('p2p')->group(function () {
-//     Route::get('/trades', [P2PController::class, 'getTrades']);
-//     Route::post('/trades', [P2PController::class, 'createTrade']);
-//     Route::get('/trades/user', [P2PController::class, 'getUserTrades']);
-//     Route::get('/trades/{tradeId}', [P2PController::class, 'getTradeDetails']);
-//     Route::post('/trades/{tradeId}/initiate', [P2PController::class, 'initiateTrade']);
-//     Route::post('/trades/{tradeId}/cancel', [P2PController::class, 'cancelTrade']);
-//     Route::post('/trades/{tradeId}/upload-proof', [P2PController::class, 'uploadPaymentProof']);
-//     Route::post('/trades/{tradeId}/mark-payment-sent', [P2PController::class, 'markPaymentAsSent']); // NEW ROUTE
-//     Route::post('/trades/{tradeId}/confirm-payment', [P2PController::class, 'confirmPayment']);
-//     Route::post('/trades/{tradeId}/dispute', [P2PController::class, 'createDispute']);
-//     Route::delete('/trades/{tradeId}', [P2PController::class, 'deleteTrade']);
-// });
 
 
 
