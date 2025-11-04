@@ -21,6 +21,7 @@ use App\Http\Controllers\Admin\AdminTransactionController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\AdminAuthController;
 use App\Http\Controllers\Admin\AdminController;
+use App\Http\Controllers\Admin\AdminP2PController;
 use App\Http\Controllers\Admin\AdminTaskController;
 use App\Http\Controllers\P2PTradeController;
 use App\Http\Controllers\PlatformController;
@@ -341,6 +342,22 @@ Route::prefix('admin/referrals')->group(function () {
     // Change password route
     Route::post('admin/change-password', [AdminController::class, 'changePassword']);
 
+
+    Route::prefix('admin')->group(function () {
+    
+    // P2P Management Routes
+    Route::prefix('p2p')->group(function () {
+        Route::get('/trades', [AdminP2PController::class, 'getTrades']);
+        Route::get('/trades/{id}', [AdminP2PController::class, 'getTrade']);
+        Route::get('/stats', [AdminP2PController::class, 'getStats']);
+        Route::get('/disputes', [AdminP2PController::class, 'getDisputes']);
+        Route::post('/trades/{id}/cancel', [AdminP2PController::class, 'cancelTrade']);
+        Route::post('/disputes/{id}/resolve', [AdminP2PController::class, 'resolveDispute']);
+        Route::get('/export', [AdminP2PController::class, 'exportTrades']);
+        Route::get('/users/{userId}/stats', [AdminP2PController::class, 'getUserP2PStats']);
+    });
+
+});
 
     
 

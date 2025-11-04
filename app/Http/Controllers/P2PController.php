@@ -11,9 +11,29 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Cloudinary\Cloudinary;
+use Cloudinary\Api\Upload\UploadApi;
 
 class P2PController extends Controller
 {
+
+    protected $cloudinary;
+    protected $uploadApi;
+
+    public function __construct()
+    {
+        $this->cloudinary = new Cloudinary([
+            'cloud' => [
+                'cloud_name' => env('CLOUDINARY_CLOUD_NAME'),
+                'api_key' => env('CLOUDINARY_API_KEY'),
+                'api_secret' => env('CLOUDINARY_API_SECRET'),
+            ],
+            'url' => [
+                'secure' => true
+            ]
+        ]);
+        $this->uploadApi = new UploadApi();
+    }
     public function getTrades(Request $request)
     {
         $type = $request->get('type', 'sell');
@@ -49,83 +69,91 @@ class P2PController extends Controller
     }
 
     public function createTrade(Request $request)
-    {
-        $user = $request->user();
+  {
+    $user = $request->user();
 
-        if (!$user->isKycVerified()) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'KYC verification is required to create P2P trades'
-            ], 403);
-        }
+    if (!$user->isKycVerified()) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'KYC verification is required to create P2P trades'
+        ], 403);
+       }
 
-        $validator = Validator::make($request->all(), [
-            'type' => 'required|in:buy,sell',
-            'amount' => 'required|numeric|min:1',
-            'price' => 'required|numeric|min:0.0001',
-            'payment_method' => 'required|string|max:50',
-            'terms' => 'required|string|max:1000',
-            'time_limit' => 'required|integer|min:5|max:60',
-        ]);
+    $validator = Validator::make($request->all(), [
+        'type' => 'required|in:buy,sell',
+        'amount' => 'required|numeric|min:1',
+        'price' => 'required|numeric|min:0.0001',
+        'payment_method' => 'required|string|max:50',
+        'time_limit' => 'required|integer|min:5|max:60',
+        'terms' => 'required|string|max:1000',
+        // Only require payment_details for BUY trades
+        'payment_details' => 'nullable|string|max:1000',
+    ]);
 
-        if ($validator->fails()) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422);
-        }
+    if ($validator->fails()) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Validation failed',
+            'errors' => $validator->errors()
+        ], 422);
+    }
 
-        try {
-            DB::beginTransaction();
+    try {
+        DB::beginTransaction();
 
-            $total = $request->amount * $request->price;
+        $total = $request->amount * $request->price;
 
-            // For sell orders, check and lock token balance
-            if ($request->type === 'sell') {
-                if ($user->token_balance < $request->amount) {
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => 'Insufficient CMEME balance'
-                    ], 400);
-                }
-
-                // Lock tokens by reducing balance for sell orders
-                $user->token_balance -= $request->amount;
-                $user->save();
+        // Handle SELL logic
+        if ($request->type === 'sell') {
+            if ($user->token_balance < $request->amount) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Insufficient CMEME balance'
+                ], 400);
             }
 
-            $trade = P2PTrade::create([
-                'seller_id' => $user->id,
-                'type' => $request->type,
-                'amount' => $request->amount,
-                'price' => $request->price,
-                'total' => $total,
-                'payment_method' => $request->payment_method,
-                'terms' => $request->terms,
-                'status' => 'active',
-                'time_limit' => $request->time_limit,
-                'expires_at' => now()->addHours(24),
-            ]);
-
-            DB::commit();
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'P2P trade created successfully',
-                'data' => [
-                    'trade' => $trade->load('seller')
-                ]
-            ]);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to create trade: ' . $e->getMessage()
-            ], 500);
+            // Lock tokens
+            $user->token_balance -= $request->amount;
+            $user->save();
         }
+
+        // Determine payment details
+        $paymentDetails = $request->type === 'sell'
+            ? 'pending'
+            : ($request->payment_details ?? 'N/A');
+
+        $trade = P2PTrade::create([
+            'seller_id' => $user->id,
+            'type' => $request->type,
+            'amount' => $request->amount,
+            'price' => $request->price,
+            'total' => $total,
+            'payment_method' => $request->payment_method,
+            'payment_details' => $paymentDetails,
+            'terms' => $request->terms,
+            'status' => 'active',
+            'time_limit' => $request->time_limit,
+            'expires_at' => now()->addHours(24),
+        ]);
+
+        DB::commit();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'P2P trade created successfully',
+            'data' => [
+                'trade' => $trade->load('seller')
+            ]
+        ]);
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Failed to create trade: ' . $e->getMessage()
+        ], 500);
     }
+}
+
 
     public function initiateTrade(Request $request, $tradeId)
     {
@@ -177,6 +205,7 @@ class P2PController extends Controller
 
             $trade->update([
                 'buyer_id' => $user->id,
+                'seller_id' => $trade->seller_id,
                 'status' => 'processing',
                 'expires_at' => now()->addMinutes((int) $timeLimit),
             ]);
@@ -208,6 +237,9 @@ class P2PController extends Controller
             ], 500);
         }
     }
+
+
+
 
     public function uploadPaymentProof(Request $request, $tradeId)
     {
@@ -242,16 +274,20 @@ class P2PController extends Controller
 
         try {
             $file = $request->file('proof_file');
-            $filename = 'p2p/proofs/' . $trade->id . '/' . uniqid() . '.' . $file->getClientOriginalExtension();
             
-            // Store in public disk
-            $path = $file->storeAs('p2p/proofs/' . $trade->id, $filename, 'public');
+            // Upload to Cloudinary
+            $uploadResult = $this->uploadApi->upload($file->getRealPath(), [
+                'folder' => 'p2p_payment_proofs/' . $trade->id,
+                'resource_type' => 'image',
+                'quality' => 'auto:best'
+            ]);
 
             $proof = P2PTradeProof::create([
                 'trade_id' => $trade->id,
                 'uploaded_by' => $user->id,
                 'proof_type' => 'payment_proof',
-                'file_path' => $filename,
+                'file_path' => $uploadResult['secure_url'],
+                'file_public_id' => $uploadResult['public_id'],
                 'description' => $request->description,
             ]);
 
@@ -271,7 +307,7 @@ class P2PController extends Controller
                 'message' => 'Payment proof uploaded successfully',
                 'data' => [
                     'proof' => $proof,
-                    'file_url' => Storage::url($filename),
+                    'file_url' => $uploadResult['secure_url'],
                     'trade' => $trade->fresh(['seller', 'buyer', 'proofs'])
                 ]
             ]);
@@ -860,7 +896,7 @@ class P2PController extends Controller
 
 
 
-    public function updatePaymentDetails(Request $request, $tradeId)
+public function updatePaymentDetails(Request $request, $tradeId)
 {
     $user = $request->user();
 
@@ -879,12 +915,7 @@ class P2PController extends Controller
         ->findOrFail($tradeId);
 
     $validator = Validator::make($request->all(), [
-        'bank_name' => 'nullable|string|max:255',
-        'account_number' => 'required|string|max:100',
-        'account_name' => 'required|string|max:255',
-        'routing_number' => 'nullable|string|max:50',
-        'swift_code' => 'nullable|string|max:50',
-        'additional_notes' => 'nullable|string|max:1000',
+        'details' => 'required|string|max:1000',
     ]);
 
     if ($validator->fails()) {
@@ -898,19 +929,9 @@ class P2PController extends Controller
     try {
         DB::beginTransaction();
 
-        // Store payment details
-        $paymentDetails = [
-            'bank_name' => $request->bank_name,
-            'account_number' => $request->account_number,
-            'account_name' => $request->account_name,
-            'routing_number' => $request->routing_number,
-            'swift_code' => $request->swift_code,
-            'additional_notes' => $request->additional_notes,
-            'updated_at' => now(),
-        ];
-
+        // Store payment details as simple string/text
         $trade->update([
-            'payment_details' => $paymentDetails,
+            'payment_details' => $request->details,
         ]);
 
         // Create system message
