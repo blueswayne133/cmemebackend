@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Cloudinary\Cloudinary;
 use Cloudinary\Api\Upload\UploadApi;
+use Illuminate\Support\Facades\Log;
 
 class P2PController extends Controller
 {
@@ -665,31 +666,45 @@ class P2PController extends Controller
         }
     }
 
-    public function getUserTrades(Request $request)
-    {
-        $user = $request->user();
-        $status = $request->get('status', 'all');
+ public function getUserTrades(Request $request)
+{
+    $user = $request->user();
+    $status = $request->get('status', 'all');
 
-        $query = P2PTrade::with(['seller', 'buyer', 'proofs', 'messages.user'])
-            ->where(function($query) use ($user) {
-                $query->where('seller_id', $user->id)
-                      ->orWhere('buyer_id', $user->id);
-            })
-            ->orderBy('created_at', 'desc');
+    // Log for debugging
+    Log::info('Fetching P2P trades for user', [
+        'user_id' => $user->id,
+        'status_filter' => $status
+    ]);
 
-        if ($status !== 'all' && $status !== '') {
-            $query->where('status', $status);
-        }
+    $query = P2PTrade::with(['seller', 'buyer', 'proofs', 'messages.user'])
+        ->where(function($query) use ($user) {
+            $query->where('seller_id', $user->id)
+                  ->orWhere('buyer_id', $user->id);
+        })
+        ->orderBy('created_at', 'desc');
 
-        $trades = $query->paginate(20);
-
-        return response()->json([
-            'status' => 'success',
-            'data' => [
-                'trades' => $trades
-            ]
-        ]);
+    if ($status !== 'all' && $status !== '') {
+        $query->where('status', $status);
     }
+
+    $trades = $query->paginate(20);
+
+    // Log the results for debugging
+    Log::info('P2P trades found', [
+        'user_id' => $user->id,
+        'total_trades' => $trades->total(),
+        'current_page' => $trades->currentPage()
+    ]);
+
+    return response()->json([
+        'status' => 'success',
+        'message' => 'User trades retrieved successfully',
+        'data' => [
+            'trades' => $trades
+        ]
+    ]);
+}
 
     public function deleteTrade(Request $request, $tradeId)
     {
