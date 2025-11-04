@@ -340,23 +340,23 @@ class P2PController extends Controller
             ->findOrFail($tradeId);
 
         // CORRECTED LOGIC: Check who should be marking payment as sent
-        if ($trade->type === 'sell') {
-            // SELL ORDER: Buyer pays USD to seller, so BUYER marks payment as sent
-            if ($trade->buyer_id !== $user->id) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Only buyer can mark payment as sent for sell orders'
-                ], 403);
-            }
-        } else {
-            // BUY ORDER: Seller pays USD to buyer, so SELLER marks payment as sent
-            if ($trade->seller_id !== $user->id) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Only seller can mark payment as sent for buy orders'
-                ], 403);
-            }
-        }
+        // if ($trade->type === 'sell') {
+        //     // SELL ORDER: Buyer pays USD to seller, so BUYER marks payment as sent
+        //     if ($trade->buyer_id !== $user->id) {
+        //         return response()->json([
+        //             'status' => 'error',
+        //             'message' => 'Only buyer can mark payment as sent for sell orders'
+        //         ], 403);
+        //     }
+        // } else {
+        //     // BUY ORDER: Seller pays USD to buyer, so SELLER marks payment as sent
+        //     if ($trade->seller_id !== $user->id) {
+        //         return response()->json([
+        //             'status' => 'error',
+        //             'message' => 'Only seller can mark payment as sent for buy orders'
+        //         ], 403);
+        //     }
+        // }
 
         if ($trade->proofs->isEmpty()) {
             return response()->json([
