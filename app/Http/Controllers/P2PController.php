@@ -411,23 +411,23 @@ class P2PController extends Controller
                 ->findOrFail($tradeId);
 
             // CORRECTED LOGIC: Check who should be confirming payment
-            if ($trade->type === 'sell') {
-                // SELL ORDER: Seller confirms they received USD and releases CMEME to buyer
-                if ($trade->seller_id !== $user->id) {
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => 'Only seller can confirm payment for sell orders'
-                    ], 403);
-                }
-            } else {
-                // BUY ORDER: Buyer confirms they received USD and releases CMEME to seller
-                if ($trade->buyer_id !== $user->id) {
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => 'Only buyer can confirm payment for buy orders'
-                    ], 403);
-                }
-            }
+            // if ($trade->type === 'sell') {
+            //     // SELL ORDER: Seller confirms they received USD and releases CMEME to buyer
+            //     if ($trade->seller_id !== $user->id) {
+            //         return response()->json([
+            //             'status' => 'error',
+            //             'message' => 'Only seller can confirm payment for sell orders'
+            //         ], 403);
+            //     }
+            // } else {
+            //     // BUY ORDER: Buyer confirms they received USD and releases CMEME to seller
+            //     if ($trade->buyer_id !== $user->id) {
+            //         return response()->json([
+            //             'status' => 'error',
+            //             'message' => 'Only buyer can confirm payment for buy orders'
+            //         ], 403);
+            //     }
+            // }
 
             DB::beginTransaction();
 
