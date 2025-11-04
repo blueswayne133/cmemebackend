@@ -82,11 +82,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/', [LeaderboardController::class, 'getLeaderboard']);
     });
 
-   Route::prefix('tasks')->group(function () {
-    Route::get('/', [TaskController::class, 'getTasks']);
-    Route::post('/{task}/complete', [TaskController::class, 'completeTask']);
-    Route::get('/stats', [TaskController::class, 'getTaskStats']);
-   });
+ 
+       // Task routes with engagement tasks
+    Route::prefix('tasks')->group(function () {
+        Route::get('/', [TaskController::class, 'getTasks']);
+        Route::post('/{task}/complete', [TaskController::class, 'completeTask']);
+        Route::get('/stats', [TaskController::class, 'getTaskStats']);
+        // New engagement task routes
+        Route::post('/upload-screenshot', [TaskController::class, 'uploadScreenshot']);
+        Route::post('/delete-screenshot', [TaskController::class, 'deleteScreenshot']);
+    });
 
        // Mining routes
     Route::prefix('mining')->group(function () {
@@ -285,22 +290,22 @@ Route::prefix('admin/kyc')->group(function () {
 
 
 // Add these routes to your admin section in api.php
-
-Route::prefix('admin')->group(function () {
-    // Task Management Routes
-    Route::prefix('tasks')->group(function () {
-        Route::get('/', [AdminTaskController::class, 'index']);
-        Route::post('/', [AdminTaskController::class, 'create']);
-        Route::get('/stats', [AdminTaskController::class, 'getTaskStats']);
-        Route::get('/types', [AdminTaskController::class, 'getTaskTypes']);
-        Route::get('/{taskId}', [AdminTaskController::class, 'show']);
-        Route::put('/{taskId}', [AdminTaskController::class, 'update']);
-        Route::delete('/{taskId}', [AdminTaskController::class, 'delete']);
-        Route::post('/{taskId}/toggle-status', [AdminTaskController::class, 'toggleStatus']);
-        Route::get('/{taskId}/progress', [AdminTaskController::class, 'getTaskProgress']);
-        Route::post('/{taskId}/reset-user', [AdminTaskController::class, 'resetUserTask']);
-        Route::post('/{taskId}/force-complete', [AdminTaskController::class, 'forceCompleteTask']);
-    });
+// Add to admin routes
+Route::prefix('admin/tasks')->group(function () {
+    Route::get('/', [AdminTaskController::class, 'index']);
+    Route::post('/', [AdminTaskController::class, 'create']);
+    Route::get('/stats', [AdminTaskController::class, 'getTaskStats']);
+    Route::get('/types', [AdminTaskController::class, 'getTaskTypes']);
+    Route::get('/engagement', [AdminTaskController::class, 'getEngagementTasks']);
+    Route::get('/engagement/completions', [AdminTaskController::class, 'getEngagementCompletions']);
+    Route::get('/engagement/completions/{taskId}', [AdminTaskController::class, 'getEngagementCompletions']);
+    Route::get('/{taskId}', [AdminTaskController::class, 'show']);
+    Route::put('/{taskId}', [AdminTaskController::class, 'update']);
+    Route::delete('/{taskId}', [AdminTaskController::class, 'delete']);
+    Route::post('/{taskId}/toggle-status', [AdminTaskController::class, 'toggleStatus']);
+    Route::get('/{taskId}/progress', [AdminTaskController::class, 'getTaskProgress']);
+    Route::post('/{taskId}/reset-user', [AdminTaskController::class, 'resetUserTask']);
+    Route::post('/{taskId}/force-complete', [AdminTaskController::class, 'forceCompleteTask']);
 });
 
 

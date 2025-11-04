@@ -429,4 +429,61 @@ class User extends Authenticatable
             'login_count' => $this->login_count + 1
         ]);
     }
+
+   
+
+    /**
+     * Get user's engagement task statistics
+     */
+    public function getEngagementTaskStatsAttribute()
+    {
+        $engagementTasks = UserTaskProgress::where('user_id', $this->id)
+            ->whereHas('task', function($query) {
+                $query->whereIn('type', [
+                    Task::TYPE_FOLLOW_X,
+                    Task::TYPE_LIKE_X,
+                    Task::TYPE_RETWEET_X,
+                    Task::TYPE_COMMENT_X,
+                    Task::TYPE_QUOTE_TWEET,
+                    Task::TYPE_JOIN_TWITTER_SPACE,
+                ]);
+            })
+            ->get();
+
+        return [
+            'total_completed' => $engagementTasks->count(),
+            'today_completed' => $engagementTasks->where('completion_date', today())->count(),
+            'total_rewards' => $engagementTasks->sum(function($progress) {
+                return $progress->attempts_count * ($progress->task->reward_amount ?? 0);
+            }),
+            'screenshot_tasks' => $engagementTasks->where('proof_data->screenshot_url', '!=', null)->count(),
+        ];
+    }
+
+    /**
+     * Get user's total task earnings
+     */
+    public function getTotalTaskEarningsAttribute()
+    {
+        return $this->taskProgress()
+            ->with('task')
+            ->get()
+            ->sum(function($progress) {
+                return $progress->attempts_count * ($progress->task->reward_amount ?? 0);
+            });
+    }
+
+    /**
+     * Get today's task earnings
+     */
+    public function getTodayTaskEarningsAttribute()
+    {
+        return $this->taskProgress()
+            ->whereDate('completion_date', today())
+            ->with('task')
+            ->get()
+            ->sum(function($progress) {
+                return $progress->attempts_count * ($progress->task->reward_amount ?? 0);
+            });
+    }
 }

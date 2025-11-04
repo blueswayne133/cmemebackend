@@ -78,6 +78,71 @@ class TaskSeeder extends Seeder
                 'is_active' => true,
                 'is_available' => true,
                 'metadata' => ['category' => 'wallet']
+            ],
+            // New Engagement Tasks
+            [
+                'title' => 'Follow us on X',
+                'description' => 'Follow our X account and upload screenshot proof',
+                'reward_amount' => 2.0,
+                'reward_type' => 'CMEME',
+                'type' => 'follow_x',
+                'max_attempts_per_day' => 1,
+                'cooldown_minutes' => 0,
+                'sort_order' => 6,
+                'is_active' => true,
+                'is_available' => true,
+                'action_url' => 'https://x.com/youraccount',
+                'social_platform' => 'x',
+                'required_content' => 'screenshot',
+                'metadata' => ['category' => 'engagement', 'platform' => 'x']
+            ],
+            [
+                'title' => 'Like our X Post',
+                'description' => 'Like our latest X post and upload screenshot',
+                'reward_amount' => 1.5,
+                'reward_type' => 'CMEME',
+                'type' => 'like_x',
+                'max_attempts_per_day' => 1,
+                'cooldown_minutes' => 0,
+                'sort_order' => 7,
+                'is_active' => true,
+                'is_available' => true,
+                'action_url' => 'https://x.com/youraccount/status/post_id',
+                'social_platform' => 'x',
+                'required_content' => 'screenshot',
+                'metadata' => ['category' => 'engagement', 'platform' => 'x']
+            ],
+            [
+                'title' => 'Retweet our Post',
+                'description' => 'Retweet our post and upload screenshot proof',
+                'reward_amount' => 2.5,
+                'reward_type' => 'CMEME',
+                'type' => 'retweet_x',
+                'max_attempts_per_day' => 1,
+                'cooldown_minutes' => 0,
+                'sort_order' => 8,
+                'is_active' => true,
+                'is_available' => true,
+                'action_url' => 'https://x.com/youraccount/status/post_id',
+                'social_platform' => 'x',
+                'required_content' => 'screenshot',
+                'metadata' => ['category' => 'engagement', 'platform' => 'x']
+            ],
+            [
+                'title' => 'Comment on X Post',
+                'description' => 'Comment on our X post and upload screenshot',
+                'reward_amount' => 3.0,
+                'reward_type' => 'CMEME',
+                'type' => 'comment_x',
+                'max_attempts_per_day' => 1,
+                'cooldown_minutes' => 0,
+                'sort_order' => 9,
+                'is_active' => true,
+                'is_available' => true,
+                'action_url' => 'https://x.com/youraccount/status/post_id',
+                'social_platform' => 'x',
+                'required_content' => 'screenshot',
+                'metadata' => ['category' => 'engagement', 'platform' => 'x']
             ]
         ];
 

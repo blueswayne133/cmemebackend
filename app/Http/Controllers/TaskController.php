@@ -10,10 +10,31 @@ use App\Models\UserSocialHandle;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 use Carbon\Carbon;
+use Cloudinary\Cloudinary;
+use Cloudinary\Api\Upload\UploadApi;
 
 class TaskController extends Controller
 {
+    protected $cloudinary;
+    protected $uploadApi;
+
+    public function __construct()
+    {
+        $this->cloudinary = new Cloudinary([
+            'cloud' => [
+                'cloud_name' => env('CLOUDINARY_CLOUD_NAME'),
+                'api_key' => env('CLOUDINARY_API_KEY'),
+                'api_secret' => env('CLOUDINARY_API_SECRET'),
+            ],
+            'url' => [
+                'secure' => true
+            ]
+        ]);
+        $this->uploadApi = new UploadApi();
+    }
+
     public function getTasks(Request $request)
     {
         $user = $request->user();
@@ -25,6 +46,8 @@ class TaskController extends Controller
         Log::info('Total tasks in database: ' . $taskCount);
         
         $tasksFromDB = Task::active()
+            ->available()
+            ->orderBy('sort_order')
             ->get();
             
         Log::info('Tasks retrieved from database: ' . $tasksFromDB->count());
@@ -73,6 +96,19 @@ class TaskController extends Controller
                 }
             }
 
+            // Check engagement tasks completion
+            if ($task->isEngagementTask()) {
+                $engagementCompleted = UserTaskProgress::where('user_id', $user->id)
+                    ->where('task_id', $task->id)
+                    ->whereDate('completion_date', today())
+                    ->exists();
+                
+                if ($engagementCompleted) {
+                    $isCompleted = true;
+                    $canComplete = false;
+                }
+            }
+
             $taskData = [
                 'id' => $task->id,
                 'title' => $task->title,
@@ -92,6 +128,8 @@ class TaskController extends Controller
                 'social_platform' => $task->social_platform,
                 'required_content' => $task->required_content,
                 'metadata' => $task->metadata,
+                'is_engagement_task' => $task->isEngagementTask(),
+                'requires_screenshot' => $task->requiresScreenshot(),
             ];
             
             Log::info('Task processed: ' . $task->title, $taskData);
@@ -146,11 +184,11 @@ class TaskController extends Controller
                     $this->saveSocialHandle($user, $task->type, $socialHandle);
                 }
 
-                // Handle engagement tasks
-                if (in_array($task->type, ['follow', 'like', 'comment', 'share', 'retweet', 'join_telegram', 'join_discord'])) {
-                    $proof = $request->input('proof');
-                    if (!$proof && $task->required_content) {
-                        throw new \Exception('Proof of completion is required for this task.');
+                // Handle engagement tasks with screenshot proof
+                if ($task->requiresScreenshot()) {
+                    $screenshotUrl = $request->input('screenshot_url');
+                    if (!$screenshotUrl) {
+                        throw new \Exception('Screenshot proof is required for this task.');
                     }
                 }
 
@@ -171,10 +209,22 @@ class TaskController extends Controller
                     ->whereDate('completion_date', today())
                     ->first();
 
+                $proofData = [];
+                
+                // Store screenshot proof for engagement tasks
+                if ($task->requiresScreenshot() && $request->input('screenshot_url')) {
+                    $proofData['screenshot_url'] = $request->input('screenshot_url');
+                    $proofData['screenshot_public_id'] = $request->input('screenshot_public_id');
+                    $proofData['submitted_at'] = now()->toISOString();
+                }
+
                 if ($userTask) {
                     // Update existing progress
                     $userTask->increment('attempts_count');
-                    $userTask->update(['last_completed_at' => now()]);
+                    $userTask->update([
+                        'last_completed_at' => now(),
+                        'proof_data' => array_merge($userTask->proof_data ?? [], $proofData)
+                    ]);
                 } else {
                     // Create new progress
                     $userTask = UserTaskProgress::create([
@@ -184,6 +234,11 @@ class TaskController extends Controller
                         'attempts_count' => 1,
                         'completion_date' => today(),
                         'last_completed_at' => now(),
+                        'proof_data' => $proofData,
+                        'metadata' => [
+                            'completed_via' => 'user_action',
+                            'user_agent' => $request->userAgent(),
+                        ]
                     ]);
                 }
 
@@ -208,10 +263,103 @@ class TaskController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Task completion error: ' . $e->getMessage(), [
+                'user_id' => $user->id,
+                'task_id' => $taskId,
+                'error' => $e->getTraceAsString()
+            ]);
+            
             return response()->json([
                 'status' => 'error',
                 'message' => $e->getMessage()
             ], 400);
+        }
+    }
+
+    /**
+     * Upload screenshot for engagement task
+     */
+    public function uploadScreenshot(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'screenshot' => 'required|image|mimes:jpeg,png,jpg,gif|max:5120',
+            'task_id' => 'required|exists:tasks,id'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            $task = Task::findOrFail($request->task_id);
+            $file = $request->file('screenshot');
+            
+            // Upload to Cloudinary with fixed parameters
+            $uploadResult = $this->uploadApi->upload($file->getRealPath(), [
+                'folder' => 'task_screenshots/' . $task->id,
+                'resource_type' => 'image',
+                'quality' => '80', // Fixed quality instead of 'auto:best'
+                'format' => 'jpg' // Fixed format instead of 'auto'
+            ]);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Screenshot uploaded successfully',
+                'data' => [
+                    'screenshot_url' => $uploadResult['secure_url'],
+                    'screenshot_public_id' => $uploadResult['public_id'],
+                    'task' => $task
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Screenshot upload error: ' . $e->getMessage());
+            
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to upload screenshot: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete screenshot from Cloudinary
+     */
+    public function deleteScreenshot(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'public_id' => 'required|string'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            // Delete from Cloudinary
+            $result = $this->uploadApi->destroy($request->public_id);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Screenshot deleted successfully',
+                'data' => $result
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Screenshot deletion error: ' . $e->getMessage());
+            
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to delete screenshot: ' . $e->getMessage()
+            ], 500);
         }
     }
 
@@ -272,6 +420,23 @@ class TaskController extends Controller
                     return 'Please connect your wallet first.';
                 }
                 break;
+
+            case 'follow_x':
+            case 'like_x':
+            case 'retweet_x':
+            case 'comment_x':
+            case 'quote_tweet':
+            case 'join_twitter_space':
+                // Check if engagement task already completed today
+                $engagementCompleted = UserTaskProgress::where('user_id', $user->id)
+                    ->where('task_id', $task->id)
+                    ->whereDate('completion_date', today())
+                    ->exists();
+                    
+                if ($engagementCompleted) {
+                    return 'This engagement task has already been completed today.';
+                }
+                break;
         }
 
         return null;
@@ -293,6 +458,16 @@ class TaskController extends Controller
 
             case 'connect_wallet':
                 // Wallet bonus is handled in WalletController
+                break;
+
+            case 'follow_x':
+            case 'like_x':
+            case 'retweet_x':
+            case 'comment_x':
+            case 'quote_tweet':
+            case 'join_twitter_space':
+                // Update engagement stats
+                $user->increment('engagement_tasks_completed');
                 break;
         }
     }
@@ -368,11 +543,26 @@ class TaskController extends Controller
                 return $progress->attempts_count * $progress->task->reward_amount;
             });
 
+        $engagementTasksCompleted = UserTaskProgress::where('user_id', $user->id)
+            ->whereDate('completion_date', $today)
+            ->whereHas('task', function($query) {
+                $query->whereIn('type', [
+                    Task::TYPE_FOLLOW_X,
+                    Task::TYPE_LIKE_X,
+                    Task::TYPE_RETWEET_X,
+                    Task::TYPE_COMMENT_X,
+                    Task::TYPE_QUOTE_TWEET,
+                    Task::TYPE_JOIN_TWITTER_SPACE,
+                ]);
+            })
+            ->count();
+
         return response()->json([
             'status' => 'success',
             'data' => [
                 'completed_today' => $completedToday,
                 'total_earned_today' => $totalEarnedToday,
+                'engagement_tasks_completed' => $engagementTasksCompleted,
                 'date' => $today->toDateString(),
             ]
         ]);

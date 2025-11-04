@@ -47,6 +47,14 @@ class Task extends Model
     const TYPE_RETWEET = 'retweet';
     const TYPE_JOIN_TELEGRAM = 'join_telegram';
     const TYPE_JOIN_DISCORD = 'join_discord';
+    
+    // New Engagement Task Types
+    const TYPE_FOLLOW_X = 'follow_x';
+    const TYPE_LIKE_X = 'like_x';
+    const TYPE_RETWEET_X = 'retweet_x';
+    const TYPE_COMMENT_X = 'comment_x';
+    const TYPE_QUOTE_TWEET = 'quote_tweet';
+    const TYPE_JOIN_TWITTER_SPACE = 'join_twitter_space';
 
     // Reward types
     const REWARD_CMEME = 'CMEME';
@@ -117,6 +125,19 @@ class Task extends Model
                     ->where('task_type', self::TYPE_CONNECT_WALLET)
                     ->exists();
                 return !$walletTaskCompleted;
+
+            case self::TYPE_FOLLOW_X:
+            case self::TYPE_LIKE_X:
+            case self::TYPE_RETWEET_X:
+            case self::TYPE_COMMENT_X:
+            case self::TYPE_QUOTE_TWEET:
+            case self::TYPE_JOIN_TWITTER_SPACE:
+                // Engagement tasks can be completed once per day
+                $engagementTaskCompleted = UserTaskProgress::where('user_id', $user->id)
+                    ->where('task_id', $this->id)
+                    ->whereDate('completion_date', today())
+                    ->exists();
+                return !$engagementTaskCompleted;
         }
 
         return true;
@@ -132,5 +153,60 @@ class Task extends Model
     public function getTotalCompletionsAttribute()
     {
         return $this->taskProgress()->count();
+    }
+
+    /**
+     * Check if task is an engagement task
+     */
+    public function isEngagementTask()
+    {
+        return in_array($this->type, [
+            self::TYPE_FOLLOW_X,
+            self::TYPE_LIKE_X,
+            self::TYPE_RETWEET_X,
+            self::TYPE_COMMENT_X,
+            self::TYPE_QUOTE_TWEET,
+            self::TYPE_JOIN_TWITTER_SPACE,
+            self::TYPE_FOLLOW,
+            self::TYPE_LIKE,
+            self::TYPE_COMMENT,
+            self::TYPE_SHARE,
+            self::TYPE_RETWEET,
+        ]);
+    }
+
+    /**
+     * Check if task requires screenshot proof
+     */
+    public function requiresScreenshot()
+    {
+        return $this->required_content === 'screenshot' || in_array($this->type, [
+            self::TYPE_FOLLOW_X,
+            self::TYPE_LIKE_X,
+            self::TYPE_RETWEET_X,
+            self::TYPE_COMMENT_X,
+            self::TYPE_QUOTE_TWEET,
+            self::TYPE_JOIN_TWITTER_SPACE,
+        ]);
+    }
+
+    /**
+     * Get engagement task statistics
+     */
+    public function getEngagementStatsAttribute()
+    {
+        if (!$this->isEngagementTask()) {
+            return null;
+        }
+
+        return [
+            'total_completions' => $this->taskProgress()->count(),
+            'screenshot_completions' => $this->taskProgress()
+                ->whereNotNull('proof_data->screenshot_url')
+                ->count(),
+            'today_completions' => $this->taskProgress()
+                ->whereDate('completion_date', today())
+                ->count(),
+        ];
     }
 }
