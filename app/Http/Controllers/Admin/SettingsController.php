@@ -58,4 +58,31 @@ class SettingsController extends Controller
             ], 500);
         }
     }
+
+
+    // In your AdminController or SettingsController
+public function updateTokenRate(Request $request)
+{
+    $validated = $request->validate([
+        'rate' => 'required|numeric|min:0.0001',
+        'reason' => 'nullable|string|max:255'
+    ]);
+
+    $previousRate = Setting::getCmemRate();
+    $newRate = $validated['rate'];
+
+    // Update the rate
+    Setting::setCmemRate($newRate);
+
+
+    return response()->json([
+        'status' => 'success',
+        'message' => 'Token rate updated successfully',
+        'data' => [
+            'previous_rate' => $previousRate,
+            'new_rate' => $newRate,
+            'change_percentage' => (($newRate - $previousRate) / $previousRate) * 100
+        ]
+    ]);
+}
 }

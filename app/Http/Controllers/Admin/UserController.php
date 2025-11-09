@@ -461,7 +461,46 @@ public function updateBalance(Request $request, $id)
     }
 
 
+ public function getUserTransaction($id)
+{
+    try {
+        $user = User::findOrFail($id);
+        
+        $query = Transaction::where('user_id', $id)
+            ->orderBy('created_at', 'desc');
 
+        // Add search functionality
+        if (request()->has('search') && !empty(request()->search)) {
+            $search = request()->search;
+            $query->where(function($q) use ($search) {
+                $q->where('description', 'like', "%{$search}%")
+                  ->orWhere('type', 'like', "%{$search}%");
+            });
+        }
+
+        // Filter by type
+        if (request()->has('type') && request()->type !== 'all') {
+            $query->where('type', request()->type);
+        }
+
+        $transactions = $query->paginate(request()->get('per_page', 20));
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'user' => $user,
+                'transactions' => $transactions
+            ]
+        ]);
+    } catch (\Exception $e) {
+        Log::error('UserController getUserTransactions error: ' . $e->getMessage());
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to fetch transactions',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
 
     
 }

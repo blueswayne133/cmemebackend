@@ -120,6 +120,63 @@ class Setting extends Model
     }
 
 
+    // Add these methods to your Setting.php model
+
+/**
+ * Get CMEME token rate
+ */
+public static function getCmemRate($default = 0.2)
+{
+    return self::getWalletValue('cmeme_rate', $default);
+}
+
+/**
+ * Set CMEME token rate
+ */
+public static function setCmemRate($rate)
+{
+    return self::setWalletValue('cmeme_rate', (float)$rate);
+}
+
+/**
+ * Get all token-related settings
+ */
+public static function getTokenSettings()
+{
+    $settings = self::where('category', 'wallet')
+                  ->whereIn('key', ['cmeme_rate'])
+                  ->get();
+    
+    $result = [
+        'cmeme_rate' => 0.2 // default
+    ];
+
+    foreach ($settings as $setting) {
+        // Convert value to proper type
+        $value = $setting->value;
+        
+        switch ($setting->type) {
+            case 'boolean':
+                $value = filter_var($value, FILTER_VALIDATE_BOOLEAN);
+                break;
+            case 'integer':
+                $value = (int) $value;
+                break;
+            case 'double':
+                $value = (float) $value;
+                break;
+            default:
+                // string - keep as is
+                break;
+        }
+
+        $result[$setting->key] = $value;
+    }
+
+    return $result;
+}
+
+
 
     
 

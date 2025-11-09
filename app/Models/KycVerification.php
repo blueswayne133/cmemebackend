@@ -13,25 +13,25 @@ class KycVerification extends Model
 
     protected $fillable = [
         'user_id',
-        'admin_id', // Add this
+        'admin_id',
         'document_type',
         'document_number',
         'document_front_path',
         'document_back_path',
         'status',
-        'rejection_reason', // Add this
+        'rejection_reason',
         'verification_notes',
         'verification_score',
         'verification_details',
         'submitted_at',
         'verified_at',
-        'verified_by_admin_at', // Add this
+        'verified_by_admin_at',
     ];
 
     protected $casts = [
         'submitted_at' => 'datetime',
         'verified_at' => 'datetime',
-        'verified_by_admin_at' => 'datetime', // Add this
+        'verified_by_admin_at' => 'datetime',
         'verification_score' => 'decimal:2',
         'verification_details' => 'array',
     ];
@@ -137,6 +137,7 @@ class KycVerification extends Model
             'verified_at' => now(),
             'verified_by_admin_at' => now(),
             'verification_notes' => $notes,
+            'rejection_reason' => null, // Clear rejection reason if any
         ]);
     }
 
@@ -161,5 +162,21 @@ class KycVerification extends Model
     public function wasVerifiedByAdmin(): bool
     {
         return !is_null($this->admin_id) && !is_null($this->verified_by_admin_at);
+    }
+
+    /**
+     * Check if KYC can be manually verified
+     */
+    public function canBeManuallyVerified(): bool
+    {
+        return $this->status === 'pending' || $this->status === 'rejected';
+    }
+
+    /**
+     * Check if KYC can be manually rejected
+     */
+    public function canBeManuallyRejected(): bool
+    {
+        return $this->status === 'pending' || $this->status === 'verified';
     }
 }

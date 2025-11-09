@@ -1,5 +1,5 @@
 <?php
-// app/Http/Controllers/KycController.php
+
 
 namespace App\Http\Controllers;
 
@@ -11,9 +11,29 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
+use Cloudinary\Cloudinary;
+use Cloudinary\Api\Upload\UploadApi;
 
 class KycController extends Controller
 {
+    protected $cloudinary;
+    protected $uploadApi;
+
+    public function __construct()
+    {
+        $this->cloudinary = new Cloudinary([
+            'cloud' => [
+                'cloud_name' => env('CLOUDINARY_CLOUD_NAME'),
+                'api_key' => env('CLOUDINARY_API_KEY'),
+                'api_secret' => env('CLOUDINARY_API_SECRET'),
+            ],
+            'url' => [
+                'secure' => true
+            ]
+        ]);
+        $this->uploadApi = new UploadApi();
+    }
+
     public function submitKyc(Request $request)
     {
         $user = $request->user();
@@ -44,7 +64,7 @@ class KycController extends Controller
         try {
             DB::beginTransaction();
 
-            // Upload document images
+            // Upload document images to Cloudinary
             $frontPath = $this->uploadDocument($request->file('document_front'), $user->id, 'front');
             $backPath = $this->uploadDocument($request->file('document_back'), $user->id, 'back');
 
@@ -186,11 +206,20 @@ class KycController extends Controller
 
     private function uploadDocument($file, $userId, $side)
     {
-        $filename = 'kyc/' . $userId . '/' . $side . '_' . time() . '_' . Str::random(6) . '.' . $file->getClientOriginalExtension();
-        
-        $path = $file->storeAs('public', $filename);
-        
-        return $filename;
+        try {
+            // Upload to Cloudinary
+            $uploadResult = $this->uploadApi->upload($file->getRealPath(), [
+                'folder' => 'kyc_documents/' . $userId,
+                'resource_type' => 'image',
+                'public_id' => $side . '_' . time() . '_' . Str::random(6),
+                'quality' => 'auto:best'
+            ]);
+
+            return $uploadResult['secure_url'];
+            
+        } catch (\Exception $e) {
+            throw new \Exception('Failed to upload document: ' . $e->getMessage());
+        }
     }
 
     private function autoVerifyKyc(KycVerification $kyc)

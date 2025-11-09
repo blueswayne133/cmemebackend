@@ -486,4 +486,10 @@ class User extends Authenticatable
                 return $progress->attempts_count * ($progress->task->reward_amount ?? 0);
             });
     }
+
+
+
+
+
+    
 }

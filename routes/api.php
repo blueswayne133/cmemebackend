@@ -21,9 +21,8 @@ use App\Http\Controllers\Admin\AdminTransactionController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\AdminAuthController;
 use App\Http\Controllers\Admin\AdminController;
-use App\Http\Controllers\Admin\AdminP2PController;
 use App\Http\Controllers\Admin\AdminTaskController;
-use App\Http\Controllers\P2PTradeController;
+use App\Http\Controllers\Admin\P2PController as AdminP2PController;
 use App\Http\Controllers\PlatformController;
 use App\Models\Admin;
 use Illuminate\Http\Request;
@@ -225,8 +224,9 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::post('/users/{id}/balance', [UserController::class, 'updateBalance']);
     
     // User Data
-    Route::get('/users/{id}/transactions', [UserController::class, 'getUserTransactions']);
+    Route::get('/users/{id}/transactions', [UserController::class, 'getUserTransaction']);
     Route::get('/users/{id}/trades', [UserController::class, 'getUserTrades']);
+
     
     // Export
     Route::get('/users/export', [UserController::class, 'exportUsers']);
@@ -278,15 +278,13 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
 // Admin KYC Management Routes
 Route::prefix('admin/kyc')->group(function () {
     Route::get('/', [AdminKycController::class, 'index']);
-    Route::get('/pending', [AdminKycController::class, 'pending']);
+    Route::get('/stats', [AdminKycController::class, 'getStats']);
     Route::get('/{id}', [AdminKycController::class, 'show']);
-    Route::post('/{id}/approve', [AdminKycController::class, 'approve']);
-    Route::post('/{id}/reject', [AdminKycController::class, 'reject']);
-    Route::delete('/{id}', [AdminKycController::class, 'destroy']); // Add delete route
-    Route::get('/user/{userId}/history', [AdminKycController::class, 'getUserKycHistory']);
-    Route::get('/{id}/document/{type}', [AdminKycController::class, 'getDocument']);
+    Route::post('/{id}/approve', [AdminKycController::class, 'approveKyc']);
+    Route::post('/{id}/reject', [AdminKycController::class, 'rejectKyc']);
+    Route::delete('/{id}', [AdminKycController::class, 'destroy']);
+    Route::get('/{id}/document/{documentType}', [AdminKycController::class, 'getDocument']);
 });
-
 
 
 // Add these routes to your admin section in api.php
@@ -348,22 +346,27 @@ Route::prefix('admin/referrals')->group(function () {
     Route::post('admin/change-password', [AdminController::class, 'changePassword']);
 
 
-    Route::prefix('admin')->group(function () {
-    
-    // P2P Management Routes
-    Route::prefix('p2p')->group(function () {
-        Route::get('/trades', [AdminP2PController::class, 'getTrades']);
-        Route::get('/trades/{id}', [AdminP2PController::class, 'getTrade']);
-        Route::get('/stats', [AdminP2PController::class, 'getStats']);
-        Route::get('/disputes', [AdminP2PController::class, 'getDisputes']);
-        Route::post('/trades/{id}/cancel', [AdminP2PController::class, 'cancelTrade']);
-        Route::post('/disputes/{id}/resolve', [AdminP2PController::class, 'resolveDispute']);
-        Route::get('/export', [AdminP2PController::class, 'exportTrades']);
-        Route::get('/users/{userId}/stats', [AdminP2PController::class, 'getUserP2PStats']);
-    });
 
+
+    
+
+
+  // P2P Management Routes
+Route::prefix('admin/p2p')->group(function () {
+    // Stats
+    Route::get('/stats', [AdminP2PController::class, 'getStats']);
+    
+    // Trades
+    Route::get('/trades', [AdminP2PController::class, 'getTrades']);
+    Route::get('/trades/{tradeId}', [AdminP2PController::class, 'getTradeDetails']);
+    Route::post('/trades/{tradeId}/cancel', [AdminP2PController::class, 'cancelTrade']);
+    Route::post('/trades/{tradeId}/force-complete', [AdminP2PController::class, 'forceCompleteTrade']);
+    
+        // Trade History & Analytics
+    Route::get('/history', [AdminP2PController::class, 'getTradeHistory']);
+    Route::get('/analytics', [AdminP2PController::class, 'getTradeAnalytics']);
+    Route::get('/export-history', [AdminP2PController::class, 'exportTradeHistory']);
+    
+    // Disputes
+    Route::post('/disputes/{tradeId}/resolve', [AdminP2PController::class, 'resolveDispute']);
 });
-
-    
-
-
