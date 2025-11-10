@@ -6,7 +6,9 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
+
 
 class User extends Authenticatable
 {
@@ -486,6 +488,31 @@ class User extends Authenticatable
                 return $progress->attempts_count * ($progress->task->reward_amount ?? 0);
             });
     }
+
+
+
+
+    /**
+ * Generate a unique referral code
+ */
+private function generateUniqueReferralCode()
+{
+    $maxAttempts = 10;
+    $attempts = 0;
+
+    do {
+        // Generate a more unique code with more characters
+        $code = 'cmeme' . Str::random(4); // Increased from 2 to 4 characters
+        $attempts++;
+        
+        if ($attempts > $maxAttempts) {
+            // If we can't find a unique code with the pattern, generate completely random
+            $code = Str::lower(Str::random(8));
+        }
+    } while (User::where('referral_code', $code)->exists());
+
+    return $code;
+}
 
 
 
