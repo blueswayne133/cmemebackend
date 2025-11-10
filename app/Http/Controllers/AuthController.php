@@ -70,7 +70,7 @@ class AuthController extends Controller
         'first_name' => $request->firstname,
         'last_name' => $request->lastname,
         'uid' => str_pad(random_int(1, 999999999), 9, '0', STR_PAD_LEFT),
-        'referral_code' => 'cmeme' . Str::random(2),
+        'referral_code' => $this->generateUniqueReferralCode(),
         'referred_by' => $referredBy?->id,
         'wallet_address' => '0x' . Str::random(40),
         'referral_usdc_balance' => 0,
@@ -100,6 +100,29 @@ class AuthController extends Controller
             'requires_verification' => true
         ]
     ], 201);
+}
+
+
+/**
+ * Generate a unique referral code
+ */
+private function generateUniqueReferralCode()
+{
+    $maxAttempts = 10;
+    $attempts = 0;
+
+    do {
+        // Generate a more unique code with more characters
+        $code = 'cmeme' . Str::random(4); // Increased from 2 to 4 characters
+        $attempts++;
+        
+        if ($attempts > $maxAttempts) {
+            // If we can't find a unique code with the pattern, generate completely random
+            $code = Str::lower(Str::random(8));
+        }
+    } while (User::where('referral_code', $code)->exists());
+
+    return $code;
 }
 
     public function login(Request $request)
