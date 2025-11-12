@@ -1,10 +1,10 @@
 <?php
-// app/Http/Controllers/Admin/SettingsController.php
 
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Setting;
+use App\Models\TokenRateHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 
@@ -13,11 +13,10 @@ class SettingsController extends Controller
     public function getSettings()
     {
         try {
-            $settings = Cache::remember('platform_settings', 3600, function () {
-                return [
-                    'wallet' => Setting::getWalletSettings()
-                ];
-            });
+            $settings = [
+                'wallet' => Setting::getWalletSettings(),
+                'token' => Setting::getTokenSettings()
+            ];
 
             return response()->json([
                 'status' => 'success',
@@ -39,17 +38,25 @@ class SettingsController extends Controller
                 'wallet.network' => 'required|string|max:50',
                 'wallet.token' => 'required|string|max:10',
                 'wallet.min_deposit' => 'required|numeric|min:0',
+                'token.cmeme_rate' => 'required|numeric|min:0' // Keep it simple - allow 0
             ]);
 
-            // Update wallet settings
+            // Update ALL wallet settings (including cmeme_rate)
             Setting::updateWalletSettings($validated['wallet']);
-
-            // Clear cache
-            Cache::forget('platform_settings');
+            
+            // Also update cmeme_rate from token section to be sure
+            if (isset($validated['token']['cmeme_rate'])) {
+                $previousRate = Setting::getCmemRate();
+                $newRate = $validated['token']['cmeme_rate'];
+                
+                Setting::setCmemRate($newRate);
+                
+                
+            }
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Wallet settings saved successfully'
+                'message' => 'Settings saved successfully'
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -59,30 +66,5 @@ class SettingsController extends Controller
         }
     }
 
-
-    // In your AdminController or SettingsController
-public function updateTokenRate(Request $request)
-{
-    $validated = $request->validate([
-        'rate' => 'required|numeric|min:0.0001',
-        'reason' => 'nullable|string|max:255'
-    ]);
-
-    $previousRate = Setting::getCmemRate();
-    $newRate = $validated['rate'];
-
-    // Update the rate
-    Setting::setCmemRate($newRate);
-
-
-    return response()->json([
-        'status' => 'success',
-        'message' => 'Token rate updated successfully',
-        'data' => [
-            'previous_rate' => $previousRate,
-            'new_rate' => $newRate,
-            'change_percentage' => (($newRate - $previousRate) / $previousRate) * 100
-        ]
-    ]);
-}
+    
 }

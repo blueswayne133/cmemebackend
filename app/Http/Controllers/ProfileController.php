@@ -9,20 +9,43 @@ use Illuminate\Support\Facades\Cache;
 class ProfileController extends Controller
 {
 
-public function getProfile(Request $request)
-{
+
+    public function getProfile(Request $request)
+  {
     $user = $request->user();
+    
+    // Get current CMEME rate from settings
+    $cmemeRate = Setting::getCmemRate(0.2);
+    
+    // Add rate to user data for frontend
+    $userData = $user->toArray();
+    $userData['cmeme_rate'] = $cmemeRate;
     
     return response()->json([
         'status' => 'success',
         'message' => 'Profile retrieved successfully',
         'data' => [
-            'user' => $user,
+            'user' => $userData, // Now includes cmeme_rate
+            'cmeme_rate' => $cmemeRate
         ]
     ]);
-}
-
-
+  }
+    // public function getProfile(Request $request)
+    // {
+    //     $user = $request->user();
+        
+    //     // Get current CMEME rate from settings
+    //     $cmemeRate = Setting::getCmemRate(0.2);
+        
+    //     return response()->json([
+    //         'status' => 'success',
+    //         'message' => 'Profile retrieved successfully',
+    //         'data' => [
+    //             'user' => $user,
+    //             'cmeme_rate' => $cmemeRate
+    //         ]
+    //     ]);
+    // }
 
     public function updateAvatar(Request $request)
     {
@@ -40,15 +63,13 @@ public function getProfile(Request $request)
         ]);
     }
 
-
-
-
-   public function getDepositWallet(Request $request)
-   {
-    try {
+    public function getDepositWallet(Request $request)
+    {
+        try {
             $settings = Cache::remember('platform_settings', 3600, function () {
                 return [
-                    'wallet' => Setting::getWalletSettings()
+                    'wallet' => Setting::getWalletSettings(),
+                    'token' => Setting::getTokenSettings() // Add token settings with CMEME rate
                 ];
             });
 
@@ -62,7 +83,5 @@ public function getProfile(Request $request)
                 'message' => 'Failed to fetch settings'
             ], 500);
         }
-   }
-
-
+    }
 }

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 
 class Setting extends Model
 {
@@ -17,7 +18,7 @@ class Setting extends Model
     ];
 
     /**
-     * Get all wallet settings
+     * Get all wallet settings (including cmeme_rate)
      */
     public static function getWalletSettings()
     {
@@ -25,28 +26,52 @@ class Setting extends Model
         $result = [];
 
         foreach ($settings as $setting) {
-            // Convert value to proper type
-            $value = $setting->value;
-            
-            switch ($setting->type) {
-                case 'boolean':
-                    $value = filter_var($value, FILTER_VALIDATE_BOOLEAN);
-                    break;
-                case 'integer':
-                    $value = (int) $value;
-                    break;
-                case 'double':
-                    $value = (float) $value;
-                    break;
-                default:
-                    // string - keep as is
-                    break;
-            }
-
+            $value = self::convertValue($setting->value, $setting->type);
             $result[$setting->key] = $value;
         }
 
+        // Set defaults for all wallet settings including cmeme_rate
+        $defaults = [
+            'deposit_address' => '',
+            'network' => 'base',
+            'token' => 'USDC',
+            'min_deposit' => 10,
+            'cmeme_rate' => 0.2  // Keep it here for now
+        ];
+
+        foreach ($defaults as $key => $defaultValue) {
+            if (!isset($result[$key])) {
+                $result[$key] = $defaultValue;
+            }
+        }
+
         return $result;
+    }
+
+    /**
+     * Get CMEME token rate - SIMPLE VERSION
+     */
+    public static function getCmemRate($default = 0.2)
+    {
+        return self::getWalletValue('cmeme_rate', $default);
+    }
+
+    /**
+     * Set CMEME token rate - SIMPLE VERSION
+     */
+    public static function setCmemRate($rate)
+    {
+        return self::setWalletValue('cmeme_rate', (float)$rate);
+    }
+
+    /**
+     * Get token settings (just cmeme_rate for now)
+     */
+    public static function getTokenSettings()
+    {
+        return [
+            'cmeme_rate' => self::getCmemRate()
+        ];
     }
 
     /**
@@ -62,25 +87,7 @@ class Setting extends Model
             return $default;
         }
 
-        // Convert value to proper type
-        $value = $setting->value;
-        
-        switch ($setting->type) {
-            case 'boolean':
-                $value = filter_var($value, FILTER_VALIDATE_BOOLEAN);
-                break;
-            case 'integer':
-                $value = (int) $value;
-                break;
-            case 'double':
-                $value = (float) $value;
-                break;
-            default:
-                // string - keep as is
-                break;
-        }
-
-        return $value;
+        return self::convertValue($setting->value, $setting->type);
     }
 
     /**
@@ -90,7 +97,7 @@ class Setting extends Model
     {
         $type = gettype($value);
         
-        return self::updateOrCreate(
+        $result = self::updateOrCreate(
             [
                 'category' => 'wallet',
                 'key' => $key
@@ -100,6 +107,11 @@ class Setting extends Model
                 'type' => $type
             ]
         );
+        
+        // Clear cache
+        Cache::forget('platform_settings');
+        
+        return $result;
     }
 
     /**
@@ -111,75 +123,25 @@ class Setting extends Model
             self::setWalletValue($key, $value);
         }
         
-        // Clear cache
-        if (function_exists('cache')) {
-            cache()->forget('platform_settings');
-        }
+        Cache::forget('platform_settings');
         
         return true;
     }
 
-
-    // Add these methods to your Setting.php model
-
-/**
- * Get CMEME token rate
- */
-public static function getCmemRate($default = 0.2)
-{
-    return self::getWalletValue('cmeme_rate', $default);
-}
-
-/**
- * Set CMEME token rate
- */
-public static function setCmemRate($rate)
-{
-    return self::setWalletValue('cmeme_rate', (float)$rate);
-}
-
-/**
- * Get all token-related settings
- */
-public static function getTokenSettings()
-{
-    $settings = self::where('category', 'wallet')
-                  ->whereIn('key', ['cmeme_rate'])
-                  ->get();
-    
-    $result = [
-        'cmeme_rate' => 0.2 // default
-    ];
-
-    foreach ($settings as $setting) {
-        // Convert value to proper type
-        $value = $setting->value;
-        
-        switch ($setting->type) {
+    /**
+     * Helper method to convert value to proper type
+     */
+    private static function convertValue($value, $type)
+    {
+        switch ($type) {
             case 'boolean':
-                $value = filter_var($value, FILTER_VALIDATE_BOOLEAN);
-                break;
+                return filter_var($value, FILTER_VALIDATE_BOOLEAN);
             case 'integer':
-                $value = (int) $value;
-                break;
+                return (int) $value;
             case 'double':
-                $value = (float) $value;
-                break;
+                return (float) $value;
             default:
-                // string - keep as is
-                break;
+                return $value;
         }
-
-        $result[$setting->key] = $value;
     }
-
-    return $result;
-}
-
-
-
-    
-
-
-    
 }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Mail\EmailVerificationMail;
 use App\Mail\PasswordResetMail;
+use App\Models\Setting;
 use App\Models\User;
 use App\Services\TwoFactorService;
 use Illuminate\Http\Request;
@@ -477,18 +478,39 @@ public function resendVerificationCode(Request $request)
         ]);
     }
 
-    public function user(Request $request)
-    {
-        $user = $request->user()->load('securitySettings');
+    // public function user(Request $request)
+    // {
+    //     $user = $request->user()->load('securitySettings');
         
-        return response()->json([
-            'status' => 'success',
-            'message' => 'User retrieved successfully',
-            'data' => [
-                'user' => $user,
-            ]
-        ]);
-    }
+    //     return response()->json([
+    //         'status' => 'success',
+    //         'message' => 'User retrieved successfully',
+    //         'data' => [
+    //             'user' => $user,
+    //         ]
+    //     ]);  
+    // }
+
+    public function user(Request $request)
+   {
+        $user = $request->user()->load('securitySettings');
+    
+    // Get current CMEME rate from settings
+    $cmemeRate = Setting::getCmemRate(0.2);
+    
+    // Add rate to user data for frontend
+    $userData = $user->toArray();
+    $userData['cmeme_rate'] = $cmemeRate;
+    
+    return response()->json([
+        'status' => 'success',
+        'message' => 'Profile retrieved successfully',
+        'data' => [
+            'user' => $userData, // Now includes cmeme_rate
+            'cmeme_rate' => $cmemeRate
+        ]
+    ]);
+  }
 
     public function forgotPassword(Request $request)
     {
