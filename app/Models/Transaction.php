@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\DB;
 
-
 class Transaction extends Model
 {
     use HasFactory;
@@ -72,6 +71,14 @@ class Transaction extends Model
     }
 
     /**
+     * Scope for withdrawal transactions
+     */
+    public function scopeWithdrawal($query)
+    {
+        return $query->where('type', self::TYPE_WITHDRAWAL);
+    }
+
+    /**
      * Scope for a specific date range
      */
     public function scopeDateRange($query, $startDate, $endDate)
@@ -85,6 +92,14 @@ class Transaction extends Model
     public function scopePositive($query)
     {
         return $query->where('amount', '>', 0);
+    }
+
+    /**
+     * Scope for negative amounts (withdrawals, transfers out)
+     */
+    public function scopeNegative($query)
+    {
+        return $query->where('amount', '<', 0);
     }
 
     /**
@@ -123,6 +138,14 @@ class Transaction extends Model
             self::TYPE_REFERRAL,
             self::TYPE_STAKING
         ]) && $this->amount > 0;
+    }
+
+    /**
+     * Check if transaction is withdrawal
+     */
+    public function isWithdrawal(): bool
+    {
+        return $this->type === self::TYPE_WITHDRAWAL;
     }
 
     /**
@@ -182,6 +205,23 @@ class Transaction extends Model
     }
 
     /**
+     * Create a withdrawal transaction
+     */
+    public static function createWithdrawalTransaction(User $user, float $amount, string $currency = 'USDC', array $metadata = []): self
+    {
+        return self::create([
+            'user_id' => $user->id,
+            'type' => self::TYPE_WITHDRAWAL,
+            'amount' => -$amount, // Negative for withdrawal
+            'description' => "{$currency} Withdrawal",
+            'metadata' => array_merge($metadata, [
+                'currency' => $currency,
+                'status' => 'pending',
+            ]),
+        ]);
+    }
+
+    /**
      * Get total earnings for a user in date range
      */
     public static function getTotalEarnings(User $user, $startDate = null, $endDate = null): float
@@ -202,6 +242,22 @@ class Transaction extends Model
     }
 
     /**
+     * Get total withdrawals for a user
+     */
+    public static function getTotalWithdrawals(User $user, $startDate = null, $endDate = null): float
+    {
+        $query = self::where('user_id', $user->id)
+            ->where('type', self::TYPE_WITHDRAWAL)
+            ->negative();
+
+        if ($startDate && $endDate) {
+            $query->dateRange($startDate, $endDate);
+        }
+
+        return abs((float) $query->sum('amount'));
+    }
+
+    /**
      * Get leaderboard data for a period
      */
     public static function getLeaderboardData($startDate, $endDate, $limit = 100)
@@ -211,7 +267,7 @@ class Transaction extends Model
                 DB::raw('SUM(amount) as total_earned'),
                 DB::raw('COUNT(*) as transaction_count')
             ])
-            ->with('user') // Eager load user relationship
+            ->with('user')
             ->where(function($query) {
                 $query->where('type', self::TYPE_EARNING)
                     ->orWhere('type', self::TYPE_MINING)

@@ -244,4 +244,97 @@ public function sendTokens(Request $request)
             ]
         ]);
     }
+
+
+        /**
+     * Withdraw USDC
+     */
+    public function withdrawUsdc(Request $request)
+    {
+        $request->validate([
+            'amount' => 'required|numeric|min:5', // Minimum withdrawal of 5 USDC
+            'description' => 'nullable|string|max:255',
+        ]);
+
+        DB::beginTransaction();
+
+        try {
+            $user = $request->user();
+            $amount = $request->amount;
+            $description = $request->description;
+            
+            // Withdrawal fees and limits
+            $minWithdrawal = 5;
+            $gasFee = 1.5;
+            $netAmount = $amount - $gasFee;
+
+            // Check minimum withdrawal
+            if ($amount < $minWithdrawal) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => "Minimum withdrawal amount is {$minWithdrawal} USDC"
+                ], 422);
+            }
+
+            // Check if net amount is positive after fees
+            if ($netAmount <= 0) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Withdrawal amount must be greater than gas fee'
+                ], 422);
+            }
+
+            // Check sufficient balance
+            if ($user->usdc_balance < $amount) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => "Insufficient USDC balance. You have {$user->usdc_balance} USDC but trying to withdraw {$amount} USDC"
+                ], 422);
+            }
+
+            // Deduct from user's USDC balance
+            $user->decrement('usdc_balance', $amount);
+
+            // Create withdrawal transaction
+            $transaction = Transaction::create([
+                'user_id' => $user->id,
+                'type' => Transaction::TYPE_WITHDRAWAL,
+                'amount' => -$amount, // Negative for withdrawal
+                'description' => $description ?: "USDC Withdrawal - Net: {$netAmount} USDC",
+                'metadata' => [
+                    'currency' => 'USDC',
+                    'withdrawal_amount' => $amount,
+                    'gas_fee' => $gasFee,
+                    'net_amount' => $netAmount,
+                    'status' => 'pending',
+                    'wallet_address' => $user->wallet_address,
+                    'user_wallet' => $user->wallet_address,
+                ],
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => "Withdrawal initiated successfully. {$netAmount} USDC will be sent to your wallet after processing.",
+                'data' => [
+                    'transaction_id' => $transaction->id,
+                    'amount' => $amount,
+                    'gas_fee' => $gasFee,
+                    'net_amount' => $netAmount,
+                    'new_balance' => $user->usdc_balance - $amount,
+                    'currency' => 'USDC'
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('USDC withdrawal error: ' . $e->getMessage());
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to process withdrawal. Please try again.'
+            ], 500);
+        }
+    }
 }

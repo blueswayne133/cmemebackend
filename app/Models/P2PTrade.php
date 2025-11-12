@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class P2PTrade extends Model
 {
@@ -269,4 +271,62 @@ class P2PTrade extends Model
 
     // Add this to make time_remaining accessible
     protected $appends = ['time_remaining'];
+
+
+
+
+
+
+/**
+ * Automatically refund tokens for expired trades
+ */
+public static function processExpiredTrades()
+{
+    $expiredTrades = self::where('status', 'processing')
+        ->where('expires_at', '<', now())
+        ->with(['seller', 'buyer'])
+        ->get();
+
+    $processedCount = 0;
+
+    foreach ($expiredTrades as $trade) {
+        try {
+            DB::transaction(function () use ($trade) {
+                // Refund tokens based on trade type
+                if ($trade->type === 'sell') {
+                    // SELL ORDER: Refund CMEME to seller
+                    $trade->seller->increment('token_balance', $trade->amount);
+                } else {
+                    // BUY ORDER: Refund CMEME to buyer
+                    if ($trade->buyer_id) {
+                        $trade->buyer->increment('token_balance', $trade->amount);
+                    }
+                }
+
+                $trade->update([
+                    'status' => 'cancelled',
+                    'cancellation_reason' => 'Trade expired automatically - no payment received',
+                    'cancelled_at' => now(),
+                ]);
+
+                // Create system message
+                \App\Models\P2PTradeMessage::create([
+                    'trade_id' => $trade->id,
+                    'user_id' => $trade->seller_id,
+                    'message' => "Trade expired automatically. Tokens have been refunded.",
+                    'type' => 'system',
+                    'is_system' => true
+                ]);
+            });
+
+            $processedCount++;
+
+        } catch (\Exception $e) {
+            Log::error("Failed to process expired trade {$trade->id}: " . $e->getMessage());
+        }
+    }
+
+    return $processedCount;
+}
+
 }

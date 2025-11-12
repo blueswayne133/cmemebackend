@@ -129,6 +129,7 @@ Route::prefix('security')->group(function () {
 Route::prefix('transactions')->group(function () {
 Route::get('/', [TransactionController::class, 'getUserTransactions']);
 Route::post('/send', [TransactionController::class, 'sendTokens']);
+Route::post('/withdraw', [TransactionController::class, 'withdrawUsdc']);
 Route::get('/verify-transfer/{token}', [TransactionController::class, 'verifyTransfer']);
 Route::post('/cancel/{transferId}', [TransactionController::class, 'cancelTransfer']);
 });
@@ -369,4 +370,5 @@ Route::prefix('admin/p2p')->group(function () {
     
     // Disputes
     Route::post('/disputes/{tradeId}/resolve', [AdminP2PController::class, 'resolveDispute']);
+    Route::post('/trades/{tradeId}/force-cancel-refund', [AdminP2PController::class, 'adminForceCancelTrade']);
 });

@@ -488,4 +488,72 @@ public function getTrades(Request $request)
             ], 500);
         }
     }
+
+
+    // In Admin/P2PController.php
+/**
+ * Admin force cancel trade with token refund
+ */
+public function adminForceCancelTrade(Request $request, $tradeId)
+{
+    try {
+        DB::beginTransaction();
+
+        $trade = P2PTrade::with(['seller', 'buyer'])->findOrFail($tradeId);
+        $reason = $request->reason ?: 'Admin cancelled - support request';
+
+        // Check if trade can be cancelled
+        if (!in_array($trade->status, ['active', 'processing'])) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Only active or processing trades can be cancelled'
+            ], 400);
+        }
+
+        // Refund tokens based on trade type and status
+        if ($trade->type === 'sell') {
+            // SELL ORDER: Always refund CMEME to seller
+            $trade->seller->increment('token_balance', $trade->amount);
+        } else {
+            // BUY ORDER: Refund CMEME to buyer if trade is processing
+            if ($trade->status === 'processing' && $trade->buyer_id) {
+                $trade->buyer->increment('token_balance', $trade->amount);
+            }
+        }
+
+        $trade->update([
+            'status' => 'cancelled',
+            'cancellation_reason' => $reason,
+            'cancelled_at' => now(),
+        ]);
+
+        // Create system message
+        \App\Models\P2PTradeMessage::create([
+            'trade_id' => $trade->id,
+            'user_id' => $trade->seller_id,
+            'message' => "Trade cancelled by Admin Support. Reason: {$reason}. Tokens refunded.",
+            'type' => 'system',
+            'is_system' => true
+        ]);
+
+        DB::commit();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Trade cancelled successfully. Tokens have been refunded.',
+            'data' => [
+                'trade' => $trade->fresh(),
+                'refunded_amount' => $trade->amount,
+                'refunded_to' => $trade->type === 'sell' ? $trade->seller->username : ($trade->buyer->username ?? 'N/A')
+            ]
+        ]);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Failed to cancel trade: ' . $e->getMessage()
+        ], 500);
+    }
+}
 }

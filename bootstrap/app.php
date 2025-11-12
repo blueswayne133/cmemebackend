@@ -26,4 +26,13 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
-    })->create();
+    })
+    ->withSchedule(function (Illuminate\Console\Scheduling\Schedule $schedule) {
+        // Process expired P2P trades every minute
+        $schedule->command('p2p:process-expired')->everyMinute();
+        
+        // Optional: You can also run it less frequently if preferred
+        // $schedule->command('p2p:process-expired')->everyFiveMinutes();
+        // $schedule->command('p2p:process-expired')->hourly();
+    })
+    ->create();
