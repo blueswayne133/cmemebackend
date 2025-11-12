@@ -8,6 +8,7 @@ use App\Models\P2PDispute;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class P2PController extends Controller
 {
@@ -31,9 +32,10 @@ class P2PController extends Controller
                 'data' => $stats
             ]);
         } catch (\Exception $e) {
+            Log::error('Failed to fetch P2P stats: ' . $e->getMessage());
             return response()->json([
                 'status' => 'error',
-                'message' => 'Failed to fetch P2P stats: ' . $e->getMessage()
+                'message' => 'Failed to fetch P2P stats'
             ], 500);
         }
     }
@@ -41,42 +43,46 @@ class P2PController extends Controller
     /**
      * Get all P2P trades with filters
      */
-/**
- * Get all P2P trades with filters
- */
-public function getTrades(Request $request)
-{
-    try {
-        $query = P2PTrade::with(['seller', 'buyer', 'proofs', 'messages.user', 'dispute.raisedBy']);
+    public function getTrades(Request $request)
+    {
+        try {
+            $query = P2PTrade::with([
+                'seller:id,username,email',
+                'buyer:id,username,email', 
+                'proofs',
+                'messages.user:id,username',
+                'dispute.raisedBy:id,username'
+            ]);
 
-        // Apply filters
-        if ($request->has('status') && $request->status !== 'all') {
-            $query->where('status', $request->status);
+            // Apply filters
+            if ($request->has('status') && $request->status !== 'all') {
+                $query->where('status', $request->status);
+            }
+
+            if ($request->has('type') && $request->type !== 'all') {
+                $query->where('type', $request->type);
+            }
+
+            if ($request->has('payment_method') && $request->payment_method !== '') {
+                $query->where('payment_method', $request->payment_method);
+            }
+
+            $trades = $query->orderBy('created_at', 'desc')->get();
+
+            return response()->json([
+                'status' => 'success',
+                'data' => [
+                    'trades' => $trades
+                ]
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch P2P trades: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to fetch P2P trades'
+            ], 500);
         }
-
-        if ($request->has('type') && $request->type !== 'all') {
-            $query->where('type', $request->type);
-        }
-
-        if ($request->has('payment_method') && $request->payment_method !== '') {
-            $query->where('payment_method', $request->payment_method);
-        }
-
-        $trades = $query->orderBy('created_at', 'desc')->get();
-
-        return response()->json([
-            'status' => 'success',
-            'data' => [
-                'trades' => $trades
-            ]
-        ]);
-    } catch (\Exception $e) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Failed to fetch P2P trades: ' . $e->getMessage()
-        ], 500);
     }
-}
 
     /**
      * Get specific trade details
@@ -84,14 +90,24 @@ public function getTrades(Request $request)
     public function getTradeDetails($tradeId)
     {
         try {
+            Log::info("Fetching trade details for ID: {$tradeId}");
+
             $trade = P2PTrade::with([
-                'seller', 
-                'buyer', 
-                'proofs', 
-                'messages.user', 
-                'dispute.raisedBy',
-                'dispute.resolvedBy'
-            ])->findOrFail($tradeId);
+                'seller:id,username,email,avatar_url,p2p_success_rate,p2p_completed_trades',
+                'buyer:id,username,email,avatar_url,p2p_success_rate,p2p_completed_trades', 
+                'proofs',
+                'messages.user:id,username,avatar_url',
+                'dispute.raisedBy:id,username',
+                'dispute.resolvedBy:id,username'
+            ])->find($tradeId);
+
+            if (!$trade) {
+                Log::warning("Trade not found with ID: {$tradeId}");
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Trade not found'
+                ], 404);
+            }
 
             return response()->json([
                 'status' => 'success',
@@ -100,10 +116,13 @@ public function getTrades(Request $request)
                 ]
             ]);
         } catch (\Exception $e) {
+            Log::error("Failed to fetch trade details for ID {$tradeId}: " . $e->getMessage());
+            Log::error($e->getTraceAsString());
+            
             return response()->json([
                 'status' => 'error',
-                'message' => 'Trade not found: ' . $e->getMessage()
-            ], 404);
+                'message' => 'Failed to fetch trade details: ' . $e->getMessage()
+            ], 500);
         }
     }
 
@@ -163,6 +182,78 @@ public function getTrades(Request $request)
 
         } catch (\Exception $e) {
             DB::rollBack();
+            Log::error("Failed to cancel trade {$tradeId}: " . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to cancel trade'
+            ], 500);
+        }
+    }
+
+    /**
+     * Admin force cancel trade with token refund
+     */
+    public function adminForceCancelTrade(Request $request, $tradeId)
+    {
+        try {
+            DB::beginTransaction();
+
+            $trade = P2PTrade::with(['seller', 'buyer'])->findOrFail($tradeId);
+            $reason = $request->reason ?: 'Admin cancelled - support request';
+
+            // Check if trade can be cancelled
+            if (!in_array($trade->status, ['active', 'processing'])) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Only active or processing trades can be cancelled'
+                ], 400);
+            }
+
+            // Refund tokens based on trade type and status
+            if ($trade->type === 'sell') {
+                // SELL ORDER: Always refund CMEME to seller
+                $trade->seller->increment('token_balance', $trade->amount);
+                $refundedTo = $trade->seller->username;
+            } else {
+                // BUY ORDER: Refund CMEME to buyer if trade is processing
+                if ($trade->status === 'processing' && $trade->buyer_id) {
+                    $trade->buyer->increment('token_balance', $trade->amount);
+                    $refundedTo = $trade->buyer->username;
+                } else {
+                    $refundedTo = 'N/A';
+                }
+            }
+
+            $trade->update([
+                'status' => 'cancelled',
+                'cancellation_reason' => $reason,
+                'cancelled_at' => now(),
+            ]);
+
+            // Create system message
+            \App\Models\P2PTradeMessage::create([
+                'trade_id' => $trade->id,
+                'user_id' => $trade->seller_id,
+                'message' => "Trade cancelled by Admin Support. Reason: {$reason}. Tokens refunded.",
+                'type' => 'system',
+                'is_system' => true
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Trade cancelled successfully. Tokens have been refunded.',
+                'data' => [
+                    'trade' => $trade->fresh(),
+                    'refunded_amount' => $trade->amount,
+                    'refunded_to' => $refundedTo
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error("Failed to force cancel trade {$tradeId}: " . $e->getMessage());
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to cancel trade: ' . $e->getMessage()
@@ -221,9 +312,10 @@ public function getTrades(Request $request)
 
         } catch (\Exception $e) {
             DB::rollBack();
+            Log::error("Failed to resolve dispute for trade {$tradeId}: " . $e->getMessage());
             return response()->json([
                 'status' => 'error',
-                'message' => 'Failed to resolve dispute: ' . $e->getMessage()
+                'message' => 'Failed to resolve dispute'
             ], 500);
         }
     }
@@ -284,22 +376,26 @@ public function getTrades(Request $request)
 
         } catch (\Exception $e) {
             DB::rollBack();
+            Log::error("Failed to force complete trade {$tradeId}: " . $e->getMessage());
             return response()->json([
                 'status' => 'error',
-                'message' => 'Failed to force complete trade: ' . $e->getMessage()
+                'message' => 'Failed to force complete trade'
             ], 500);
         }
     }
 
-
-      /**
+    /**
      * Get P2P trade history with filters
      */
     public function getTradeHistory(Request $request)
     {
         try {
-            $query = P2PTrade::with(['seller', 'buyer', 'proofs', 'dispute'])
-                ->whereIn('status', ['completed', 'cancelled', 'disputed']);
+            $query = P2PTrade::with([
+                'seller:id,username,email',
+                'buyer:id,username,email', 
+                'proofs',
+                'dispute'
+            ])->whereIn('status', ['completed', 'cancelled', 'disputed']);
 
             // Apply filters
             if ($request->has('status') && $request->status !== 'all') {
@@ -347,9 +443,10 @@ public function getTrades(Request $request)
                 ]
             ]);
         } catch (\Exception $e) {
+            Log::error('Failed to fetch trade history: ' . $e->getMessage());
             return response()->json([
                 'status' => 'error',
-                'message' => 'Failed to fetch trade history: ' . $e->getMessage()
+                'message' => 'Failed to fetch trade history'
             ], 500);
         }
     }
@@ -403,9 +500,10 @@ public function getTrades(Request $request)
                 ]
             ]);
         } catch (\Exception $e) {
+            Log::error('Failed to fetch trade analytics: ' . $e->getMessage());
             return response()->json([
                 'status' => 'error',
-                'message' => 'Failed to fetch trade analytics: ' . $e->getMessage()
+                'message' => 'Failed to fetch trade analytics'
             ], 500);
         }
     }
@@ -482,78 +580,11 @@ public function getTrades(Request $request)
             }, $filename);
 
         } catch (\Exception $e) {
+            Log::error('Failed to export trade history: ' . $e->getMessage());
             return response()->json([
                 'status' => 'error',
-                'message' => 'Failed to export trade history: ' . $e->getMessage()
+                'message' => 'Failed to export trade history'
             ], 500);
         }
     }
-
-
-    // In Admin/P2PController.php
-/**
- * Admin force cancel trade with token refund
- */
-public function adminForceCancelTrade(Request $request, $tradeId)
-{
-    try {
-        DB::beginTransaction();
-
-        $trade = P2PTrade::with(['seller', 'buyer'])->findOrFail($tradeId);
-        $reason = $request->reason ?: 'Admin cancelled - support request';
-
-        // Check if trade can be cancelled
-        if (!in_array($trade->status, ['active', 'processing'])) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Only active or processing trades can be cancelled'
-            ], 400);
-        }
-
-        // Refund tokens based on trade type and status
-        if ($trade->type === 'sell') {
-            // SELL ORDER: Always refund CMEME to seller
-            $trade->seller->increment('token_balance', $trade->amount);
-        } else {
-            // BUY ORDER: Refund CMEME to buyer if trade is processing
-            if ($trade->status === 'processing' && $trade->buyer_id) {
-                $trade->buyer->increment('token_balance', $trade->amount);
-            }
-        }
-
-        $trade->update([
-            'status' => 'cancelled',
-            'cancellation_reason' => $reason,
-            'cancelled_at' => now(),
-        ]);
-
-        // Create system message
-        \App\Models\P2PTradeMessage::create([
-            'trade_id' => $trade->id,
-            'user_id' => $trade->seller_id,
-            'message' => "Trade cancelled by Admin Support. Reason: {$reason}. Tokens refunded.",
-            'type' => 'system',
-            'is_system' => true
-        ]);
-
-        DB::commit();
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Trade cancelled successfully. Tokens have been refunded.',
-            'data' => [
-                'trade' => $trade->fresh(),
-                'refunded_amount' => $trade->amount,
-                'refunded_to' => $trade->type === 'sell' ? $trade->seller->username : ($trade->buyer->username ?? 'N/A')
-            ]
-        ]);
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Failed to cancel trade: ' . $e->getMessage()
-        ], 500);
-    }
-}
 }
