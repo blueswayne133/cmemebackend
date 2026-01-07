@@ -38,10 +38,12 @@ class SettingsController extends Controller
                 'wallet.network' => 'required|string|max:50',
                 'wallet.token' => 'required|string|max:10',
                 'wallet.min_deposit' => 'required|numeric|min:0',
+                'wallet.subscription_fee_cmeme' => 'nullable|numeric|min:0',
+                'wallet.subscription_fee_usdc' => 'nullable|numeric|min:0',
                 'token.cmeme_rate' => 'required|numeric|min:0' // Keep it simple - allow 0
             ]);
 
-            // Update ALL wallet settings (including cmeme_rate)
+            // Update ALL wallet settings (including cmeme_rate and subscription fees)
             Setting::updateWalletSettings($validated['wallet']);
             
             // Also update cmeme_rate from token section to be sure

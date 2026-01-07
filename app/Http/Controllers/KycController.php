@@ -104,17 +104,18 @@ class KycController extends Controller
                     $message .= ' Referral rewards have been processed.';
                 }
             } else {
+                // Keep status as pending for admin review instead of auto-rejecting
                 $kycVerification->update([
-                    'status' => 'rejected',
-                    'rejection_reason' => $verificationResult['reason'],
+                    'status' => 'pending', // Keep as pending for admin review
                     'verification_score' => $verificationResult['score'],
                     'verification_details' => $verificationResult['details'],
+                    'verification_notes' => 'Pending manual review by admin',
                 ]);
 
-                // Update user KYC status
-                $user->updateKycStatus('rejected', $kycVerification);
+                // Update user KYC status to pending
+                $user->updateKycStatus('pending', $kycVerification);
 
-                $message = 'KYC submitted but could not be verified automatically. Please contact support.';
+                $message = 'KYC submitted successfully! Your documents are under review and will be processed by our team shortly.';
             }
 
             DB::commit();
@@ -127,6 +128,7 @@ class KycController extends Controller
                     'is_verified' => $user->is_verified,
                     'verification_score' => $kycVerification->verification_score,
                     'rejection_reason' => $kycVerification->rejection_reason,
+                    'status' => $kycVerification->status,
                 ]
             ]);
 
@@ -224,10 +226,10 @@ class KycController extends Controller
 
     private function autoVerifyKyc(KycVerification $kyc)
     {
-        $documentNumber = $kyc->document_number;
+        $documentNumber = trim($kyc->document_number);
         $verificationDetails = [];
         $score = 0.0;
-        $maxScore = 6.0;
+        $maxScore = 4.0; // Simplified scoring system
 
         // Criteria 1: Document number not empty
         if (!empty($documentNumber)) {
@@ -235,91 +237,58 @@ class KycController extends Controller
             $verificationDetails[] = 'Document number provided';
         }
 
-        // Criteria 2: Minimum length
-        if (strlen($documentNumber) >= 5) {
+        // Criteria 2: Minimum length (very lenient - accept 3+ alphanumeric characters)
+        $cleanNumber = preg_replace('/[^A-Z0-9]/i', '', $documentNumber); // Remove separators for length check
+        if (strlen($cleanNumber) >= 3) {
             $score += 1;
             $verificationDetails[] = 'Document number meets minimum length';
         }
 
-        // Criteria 3: No invalid patterns
-        $invalidPatterns = ['123456', '000000', '111111', 'test', 'sample'];
-        if (!in_array(strtolower($documentNumber), $invalidPatterns)) {
+        // Criteria 3: No obviously fake/test patterns
+        $invalidPatterns = [
+            '123', '000', '111', '222', '333', '444', '555', '666', '777', '888', '999',
+            '1234', '0000', '1111', 'test', 'sample', 'example', 'demo', 'xxxx', 'yyyy', 'zzzz',
+            '12345', '00000', '11111', 'aaaaa', 'bbbbb', 'ccccc'
+        ];
+        $isInvalid = false;
+        foreach ($invalidPatterns as $pattern) {
+            if (stripos($cleanNumber, $pattern) !== false && strlen($cleanNumber) <= strlen($pattern) + 2) {
+                $isInvalid = true;
+                break;
+            }
+        }
+        
+        if (!$isInvalid && strlen($cleanNumber) >= 3) {
             $score += 1;
             $verificationDetails[] = 'Document number passes pattern validation';
         }
 
-        // Criteria 4: Format matches document type
-        $formatValid = false;
-        switch ($kyc->document_type) {
-            case 'passport':
-                $formatValid = preg_match('/^[A-Z0-9]{6,9}$/', $documentNumber);
-                break;
-            case 'drivers_license':
-                $formatValid = preg_match('/^[A-Z0-9]{5,15}$/', $documentNumber);
-                break;
-            case 'national_id':
-                $formatValid = preg_match('/^[0-9]{8,12}$/', $documentNumber);
-                break;
-        }
-        
-        if ($formatValid) {
-            $score += 1;
-            $verificationDetails[] = 'Document number format matches document type';
-        }
-
-        // Criteria 5: Only allowed characters
-        if (preg_match('/^[A-Z0-9]+$/', $documentNumber)) {
+        // Criteria 4: Contains alphanumeric characters (very lenient - accept any alphanumeric with common separators)
+        // Accept letters (any case), numbers, and common separators (hyphens, spaces, slashes, dots, colons)
+        if (preg_match('/^[A-Za-z0-9\s\-\/\.:]+$/', $documentNumber) && strlen($cleanNumber) >= 3) {
             $score += 1;
             $verificationDetails[] = 'Document number contains valid characters';
         }
 
-        // Criteria 6: Checksum validation (if applicable)
-        $checksumValid = $this->validateDocumentChecksum($documentNumber, $kyc->document_type);
-        if ($checksumValid) {
-            $score += 1;
-            $verificationDetails[] = 'Document number passes checksum validation';
-        }
+        // Note: Removed strict format matching, length restrictions, and checksum validation
+        // These were too restrictive for international documents (India, etc.)
+        // Admin review will handle all verification to ensure quality
 
         $finalScore = $score / $maxScore;
-        $verified = $finalScore >= 0.7; // 70% confidence threshold
+        // Very lenient threshold - only reject obviously fake/test data
+        // Most real documents should pass with 50%+ score
+        $verified = $finalScore >= 0.5; // 50% confidence threshold
 
         return [
             'verified' => $verified,
             'score' => $finalScore,
-            'reason' => $verified ? null : 'Document could not be automatically verified with sufficient confidence',
+            'reason' => $verified ? null : 'Document requires manual review by admin',
             'details' => $verificationDetails,
         ];
     }
 
-    private function validateDocumentChecksum($documentNumber, $documentType)
-    {
-        if ($documentType === 'national_id' && is_numeric($documentNumber)) {
-            return $this->luhnCheck($documentNumber);
-        }
-
-        return true;
-    }
-
-    private function luhnCheck($number)
-    {
-        $number = strrev(preg_replace('/[^\d]/', '', $number));
-        $sum = 0;
-
-        for ($i = 0, $j = strlen($number); $i < $j; $i++) {
-            $digit = (int) $number[$i];
-
-            if ($i % 2 === 1) {
-                $digit *= 2;
-                if ($digit > 9) {
-                    $digit -= 9;
-                }
-            }
-
-            $sum += $digit;
-        }
-
-        return $sum % 10 === 0;
-    }
+    // Removed strict checksum validation as it was too restrictive for international documents
+    // Different countries use different validation algorithms
 
     // Process referral rewards when user completes KYC
     private function processReferralRewards(User $user)

@@ -52,6 +52,9 @@ class User extends Authenticatable
         // Social connection fields
         'twitter_connected',
         'telegram_connected',
+        // Subscription field
+        'has_subscribed',
+        'subscribed_at',
     ];
 
     protected $hidden = [
@@ -79,6 +82,8 @@ class User extends Authenticatable
         'twitter_connected' => 'boolean',
         'telegram_connected' => 'boolean',
         'can_claim_referral_usdc' => 'boolean',
+        'has_subscribed' => 'boolean',
+        'subscribed_at' => 'datetime',
         'is_verified' => 'boolean',
         'login_count' => 'integer',
         'mining_streak' => 'integer',

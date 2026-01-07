@@ -7,6 +7,7 @@ use App\Models\KycVerification;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Storage;
 
 class AdminKycController extends Controller
 {
@@ -58,6 +59,8 @@ class AdminKycController extends Controller
                 'document_type' => $kyc->document_type,
                 'document_type_label' => $kyc->getDocumentTypeLabel(),
                 'document_number' => $kyc->document_number,
+                'document_front_path' => $kyc->document_front_path,
+                'document_back_path' => $kyc->document_back_path,
                 'status' => $kyc->status,
                 'submitted_at' => $kyc->submitted_at,
                 'verified_at' => $kyc->verified_at,
@@ -180,12 +183,7 @@ class AdminKycController extends Controller
             ], 404);
         }
 
-        if ($kyc->status === 'verified') {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'KYC is already verified'
-            ], 400);
-        }
+        // Allow approving from any status (can re-approve if needed)
 
         try {
             $admin = $request->user();
@@ -249,12 +247,7 @@ class AdminKycController extends Controller
             ], 404);
         }
 
-        if ($kyc->status === 'rejected') {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'KYC is already rejected'
-            ], 400);
-        }
+        // Allow rejecting from any status (can re-reject if needed)
 
         try {
             $admin = $request->user();
@@ -345,12 +338,20 @@ class AdminKycController extends Controller
             ], 404);
         }
 
+        // If path is a URL (Cloudinary), redirect to it
+        if (filter_var($path, FILTER_VALIDATE_URL)) {
+            return redirect($path);
+        }
+
+        // If path is a local file, serve it
+        if (Storage::exists($path)) {
+            return response()->file(Storage::path($path));
+        }
+
         return response()->json([
-            'status' => 'success',
-            'data' => [
-                'document_url' => $path
-            ]
-        ]);
+            'status' => 'error',
+            'message' => 'Document not found'
+        ], 404);
     }
 
     /**

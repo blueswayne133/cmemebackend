@@ -30,13 +30,15 @@ class Setting extends Model
             $result[$setting->key] = $value;
         }
 
-        // Set defaults for all wallet settings including cmeme_rate
+        // Set defaults for all wallet settings including cmeme_rate and subscription fees
         $defaults = [
             'deposit_address' => '',
             'network' => 'base',
             'token' => 'USDC',
             'min_deposit' => 10,
-            'cmeme_rate' => 0.2  // Keep it here for now
+            'cmeme_rate' => 0.2,  // Keep it here for now
+            'subscription_fee_cmeme' => 1500,
+            'subscription_fee_usdc' => 1500,
         ];
 
         foreach ($defaults as $key => $defaultValue) {

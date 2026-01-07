@@ -13,6 +13,8 @@ use App\Http\Controllers\SecurityController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\WalletController;
+use App\Http\Controllers\SubscriptionController;
+use App\Http\Controllers\SwapController;
 
 // Admin Controllers
 use App\Http\Controllers\Admin\DashboardController;
@@ -96,6 +98,19 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('mining')->group(function () {
         Route::post('/claim', [MiningController::class, 'claimMiningReward']);
         Route::get('/status', [MiningController::class, 'getMiningStatus']);
+    });
+
+    // Subscription routes
+    Route::prefix('subscription')->group(function () {
+        Route::post('/subscribe', [SubscriptionController::class, 'subscribe']);
+        Route::get('/status', [SubscriptionController::class, 'getStatus']);
+    });
+
+    // Swap routes
+    Route::prefix('swap')->group(function () {
+        Route::post('/cmeme-to-usdc', [SwapController::class, 'swapToUSDC']);
+        Route::post('/usdc-to-cmeme', [SwapController::class, 'swapToCMEME']);
+        Route::get('/preview', [SwapController::class, 'getSwapPreview']);
     });
 
 
