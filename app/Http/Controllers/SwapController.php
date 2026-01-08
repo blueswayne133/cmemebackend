@@ -28,6 +28,16 @@ class SwapController extends Controller
         }
 
         $user = $request->user();
+        
+        // Check if user is subscribed
+        if (!($user->has_subscribed ?? false)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Premium subscription required to use swap feature',
+                'requires_subscription' => true
+            ], 403);
+        }
+        
         $cmemeAmount = $request->amount;
         
         // Get CMEME to USDC rate (default 0.2 if not set)
@@ -123,6 +133,16 @@ class SwapController extends Controller
         }
 
         $user = $request->user();
+        
+        // Check if user is subscribed
+        if (!($user->has_subscribed ?? false)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Premium subscription required to use swap feature',
+                'requires_subscription' => true
+            ], 403);
+        }
+        
         $usdcAmount = $request->amount;
         
         // Get CMEME to USDC rate (default 0.2 if not set)
@@ -219,6 +239,16 @@ class SwapController extends Controller
         }
 
         $user = $request->user();
+        
+        // Check if user is subscribed
+        if (!($user->has_subscribed ?? false)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Premium subscription required to use swap feature',
+                'requires_subscription' => true
+            ], 403);
+        }
+        
         $from = $request->from;
         $amount = $request->amount;
         $cmemeRate = $user->cmeme_rate ?? 0.2;
