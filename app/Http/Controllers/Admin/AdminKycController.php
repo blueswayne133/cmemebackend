@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\KycVerification;
 use App\Models\User;
+use App\Models\Admin;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
 
@@ -186,7 +188,16 @@ class AdminKycController extends Controller
         // Allow approving from any status (can re-approve if needed)
 
         try {
+            // Get authenticated admin
             $admin = $request->user();
+            
+            // Ensure we have an Admin instance
+            if (!$admin || !($admin instanceof Admin)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Unauthorized. Admin authentication required.'
+                ], 401);
+            }
 
             // Update KYC status
             $kyc->markAsVerified($admin->id, $request->notes);
@@ -250,7 +261,16 @@ class AdminKycController extends Controller
         // Allow rejecting from any status (can re-reject if needed)
 
         try {
+            // Get authenticated admin
             $admin = $request->user();
+            
+            // Ensure we have an Admin instance
+            if (!$admin || !($admin instanceof Admin)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Unauthorized. Admin authentication required.'
+                ], 401);
+            }
 
             // Update KYC status
             $kyc->markAsRejected($admin->id, $request->reason, $request->notes);

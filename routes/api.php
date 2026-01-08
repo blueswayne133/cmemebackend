@@ -287,19 +287,17 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::post('/{id}/approve', [\App\Http\Controllers\Admin\DepositController::class, 'approve']);
     Route::post('/{id}/reject', [\App\Http\Controllers\Admin\DepositController::class, 'reject']);
 });
-});
 
-
-
-// Admin KYC Management Routes
-Route::prefix('admin/kyc')->group(function () {
-    Route::get('/', [AdminKycController::class, 'index']);
-    Route::get('/stats', [AdminKycController::class, 'getStats']);
-    Route::get('/{id}', [AdminKycController::class, 'show']);
-    Route::post('/{id}/approve', [AdminKycController::class, 'approveKyc']);
-    Route::post('/{id}/reject', [AdminKycController::class, 'rejectKyc']);
-    Route::delete('/{id}', [AdminKycController::class, 'destroy']);
-    Route::get('/{id}/document/{documentType}', [AdminKycController::class, 'getDocument']);
+    // Admin KYC Management Routes
+    Route::prefix('kyc')->group(function () {
+        Route::get('/', [AdminKycController::class, 'index']);
+        Route::get('/stats', [AdminKycController::class, 'getStats']);
+        Route::get('/{id}', [AdminKycController::class, 'show']);
+        Route::post('/{id}/approve', [AdminKycController::class, 'approveKyc']);
+        Route::post('/{id}/reject', [AdminKycController::class, 'rejectKyc']);
+        Route::delete('/{id}', [AdminKycController::class, 'destroy']);
+        Route::get('/{id}/document/{documentType}', [AdminKycController::class, 'getDocument']);
+    });
 });
 
 
