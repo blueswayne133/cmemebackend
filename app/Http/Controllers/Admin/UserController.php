@@ -9,6 +9,8 @@ use App\Models\KycVerification;
 use App\Models\WalletDetail;
 use App\Models\UserTaskProgress;
 use App\Models\P2PTrade;
+use App\Models\P2PDispute;
+use App\Models\P2PTradeProof;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -416,21 +418,86 @@ public function updateBalance(Request $request, $id)
     public function destroy($id)
     {
         try {
+            DB::beginTransaction();
+
             $user = User::findOrFail($id);
             
-            // In a real application, you might want to soft delete or archive
+            // Handle self-referential relationship: Set referred_by to null for users who were referred by this user
+            User::where('referred_by', $id)->update(['referred_by' => null]);
+            
+            // Handle P2P disputes where user raised the dispute
+            P2PDispute::where('raised_by', $id)->update(['raised_by' => null]);
+            
+            // Handle P2P disputes where user resolved the dispute (set to null)
+            P2PDispute::where('resolved_by', $id)->update(['resolved_by' => null]);
+            
+            // Handle P2P trade proofs uploaded by user
+            P2PTradeProof::where('uploaded_by', $id)->delete();
+            
+            // Handle P2P trades where user is seller or buyer
+            // Cancel all non-completed trades where user is involved
+            P2PTrade::where(function($query) use ($id) {
+                $query->where('seller_id', $id)
+                      ->orWhere('buyer_id', $id);
+            })
+            ->whereNotIn('status', ['completed', 'cancelled'])
+            ->update([
+                'status' => 'cancelled',
+                'cancelled_at' => now(),
+                'cancellation_reason' => 'User account deleted'
+            ]);
+            
+            // For buyer_id, we can nullify it since it's nullable
+            // But we'll only do this for non-completed trades to preserve historical records
+            P2PTrade::where('buyer_id', $id)
+                ->where('status', '!=', 'completed')
+                ->update(['buyer_id' => null]);
+            
+            // Delete all trades where user is seller (seller_id is required, so we must delete)
+            // This includes completed trades to avoid foreign key constraint issues
+            P2PTrade::where('seller_id', $id)->delete();
+            
+            // Delete the user (this will cascade delete related records with cascade delete)
             $user->delete();
+
+            DB::commit();
 
             return response()->json([
                 'success' => true,
                 'message' => 'User deleted successfully'
             ]);
-        } catch (\Exception $e) {
-            Log::error('UserController destroy error: ' . $e->getMessage());
+        } catch (\Illuminate\Database\QueryException $e) {
+            DB::rollBack();
+            Log::error('UserController destroy query error: ' . $e->getMessage(), [
+                'user_id' => $id,
+                'sql' => $e->getSql(),
+                'bindings' => $e->getBindings()
+            ]);
+            
+            // Check if it's a foreign key constraint error
+            if (str_contains($e->getMessage(), 'foreign key constraint')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cannot delete user due to existing relationships. Please contact system administrator.',
+                    'error' => config('app.debug') ? $e->getMessage() : null
+                ], 409);
+            }
+            
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to delete user',
-                'error' => $e->getMessage()
+                'error' => config('app.debug') ? $e->getMessage() : null
+            ], 500);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('UserController destroy error: ' . $e->getMessage(), [
+                'user_id' => $id,
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete user',
+                'error' => config('app.debug') ? $e->getMessage() : null
             ], 500);
         }
     }
