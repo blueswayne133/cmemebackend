@@ -160,6 +160,19 @@ class SwapController extends Controller
         try {
             DB::beginTransaction();
 
+            // Check maximum balance before adding
+            $maxBalance = \App\Models\Setting::getWalletValue('max_cmeme_balance', 100000);
+            $currentBalance = $user->token_balance ?? 0;
+            $newBalance = $currentBalance + $cmemeAmount;
+
+            if ($newBalance > $maxBalance) {
+                DB::rollBack();
+                return response()->json([
+                    'status' => 'error',
+                    'message' => "Maximum CMEME balance limit exceeded. Maximum allowed: " . number_format($maxBalance, 2) . " CMEME. Current balance: " . number_format($currentBalance, 2) . " CMEME. This swap would result in " . number_format($newBalance, 2) . " CMEME."
+                ], 400);
+            }
+
             // Deduct USDC
             $user->decrement('usdc_balance', $usdcAmount);
             

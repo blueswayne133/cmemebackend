@@ -492,6 +492,40 @@ class User extends Authenticatable
             });
     }
 
+    /**
+     * Safely increment token balance with maximum limit check
+     * 
+     * @param float $amount Amount to add
+     * @return array ['success' => bool, 'message' => string, 'new_balance' => float|null]
+     */
+    public function safeIncrementTokenBalance($amount)
+    {
+        $maxBalance = \App\Models\Setting::getWalletValue('max_cmeme_balance', 100000);
+        $currentBalance = $this->token_balance ?? 0;
+        $newBalance = $currentBalance + $amount;
+
+        if ($newBalance > $maxBalance) {
+            return [
+                'success' => false,
+                'message' => "Maximum CMEME balance limit exceeded. Maximum allowed: " . number_format($maxBalance, 2) . " CMEME. Current balance: " . number_format($currentBalance, 2) . " CMEME. Would exceed by: " . number_format($newBalance - $maxBalance, 2) . " CMEME.",
+                'current_balance' => $currentBalance,
+                'max_balance' => $maxBalance,
+                'new_balance' => null
+            ];
+        }
+
+        $this->increment('token_balance', $amount);
+        $this->refresh();
+
+        return [
+            'success' => true,
+            'message' => 'Balance updated successfully',
+            'current_balance' => $currentBalance,
+            'new_balance' => $this->token_balance,
+            'max_balance' => $maxBalance
+        ];
+    }
+
 
 
 

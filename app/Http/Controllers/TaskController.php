@@ -506,18 +506,46 @@ class TaskController extends Controller
     private function rewardUser(User $user, $amount, $type, $description): void
     {
         if ($type === 'CMEME') {
-            $user->increment('token_balance', $amount);
-            
-            Transaction::create([
-                'user_id' => $user->id,
-                'type' => Transaction::TYPE_EARNING,
-                'amount' => $amount,
-                'description' => "Task reward: {$description}",
-                'metadata' => [
-                    'reward_type' => 'task',
-                    'task_description' => $description,
-                ],
-            ]);
+            // Check maximum balance before adding
+            $maxBalance = \App\Models\Setting::getWalletValue('max_cmeme_balance', 100000);
+            $currentBalance = $user->token_balance ?? 0;
+            $newBalance = $currentBalance + $amount;
+
+            if ($newBalance > $maxBalance) {
+                // Only add up to the max limit
+                $allowedAmount = max(0, $maxBalance - $currentBalance);
+                if ($allowedAmount > 0) {
+                    $user->increment('token_balance', $allowedAmount);
+                    
+                    Transaction::create([
+                        'user_id' => $user->id,
+                        'type' => Transaction::TYPE_EARNING,
+                        'amount' => $allowedAmount,
+                        'description' => "Task reward: {$description} (Partial - max balance reached)",
+                        'metadata' => [
+                            'reward_type' => 'task',
+                            'task_description' => $description,
+                            'original_amount' => $amount,
+                            'partial_reward' => true,
+                            'max_balance' => $maxBalance,
+                        ],
+                    ]);
+                }
+                // Silently cap at max - user gets partial reward
+            } else {
+                $user->increment('token_balance', $amount);
+                
+                Transaction::create([
+                    'user_id' => $user->id,
+                    'type' => Transaction::TYPE_EARNING,
+                    'amount' => $amount,
+                    'description' => "Task reward: {$description}",
+                    'metadata' => [
+                        'reward_type' => 'task',
+                        'task_description' => $description,
+                    ],
+                ]);
+            }
         } elseif ($type === 'USDC') {
             $user->increment('usdc_balance', $amount);
         }

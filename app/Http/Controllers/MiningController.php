@@ -28,6 +28,15 @@ class MiningController extends Controller
                     throw new \Exception("You can claim again in " . round($hoursRemaining, 1) . " hours.");
                 }
 
+                // Check maximum balance before adding
+                $maxBalance = \App\Models\Setting::getWalletValue('max_cmeme_balance', 100000);
+                $currentBalance = $user->token_balance ?? 0;
+                $newBalance = $currentBalance + 1;
+
+                if ($newBalance > $maxBalance) {
+                    throw new \Exception("Maximum CMEME balance limit reached. You cannot claim more tokens as your balance would exceed the maximum limit of " . number_format($maxBalance, 2) . " CMEME. Current balance: " . number_format($currentBalance, 2) . " CMEME.");
+                }
+
                 // Add 1 CMEME to user balance
                 $user->increment('token_balance', 1);
 

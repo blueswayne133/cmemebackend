@@ -39,6 +39,7 @@ class Setting extends Model
             'cmeme_rate' => 0.2,  // Keep it here for now
             'subscription_fee_cmeme' => 1500,
             'subscription_fee_usdc' => 1500,
+            'max_cmeme_balance' => 100000, // Maximum CMEME balance per user (default 100k)
         ];
 
         foreach ($defaults as $key => $defaultValue) {

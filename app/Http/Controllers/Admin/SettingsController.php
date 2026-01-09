@@ -40,6 +40,7 @@ class SettingsController extends Controller
                 'wallet.min_deposit' => 'required|numeric|min:0',
                 'wallet.subscription_fee_cmeme' => 'nullable|numeric|min:0',
                 'wallet.subscription_fee_usdc' => 'nullable|numeric|min:0',
+                'wallet.max_cmeme_balance' => 'nullable|numeric|min:0',
                 'token.cmeme_rate' => 'required|numeric|min:0' // Keep it simple - allow 0
             ]);
 

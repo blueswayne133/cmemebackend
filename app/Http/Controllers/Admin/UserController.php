@@ -286,6 +286,28 @@ public function updateBalance(Request $request, $id)
         // Calculate new balance based on operation type
         if ($request->type === 'add') {
             $newBalance = $currentBalance + $amount;
+            
+            // Check maximum CMEME balance limit
+            if ($field === 'token_balance') {
+                $maxBalance = \App\Models\Setting::getWalletValue('max_cmeme_balance', 100000);
+                
+                if ($newBalance > $maxBalance) {
+                    Log::warning('Maximum CMEME balance exceeded', [
+                        'current_balance' => $currentBalance,
+                        'amount_to_add' => $amount,
+                        'new_balance' => $newBalance,
+                        'max_balance' => $maxBalance
+                    ]);
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Maximum CMEME balance limit exceeded. Maximum allowed: " . number_format($maxBalance, 2) . " CMEME. Current balance: " . number_format($currentBalance, 2) . " CMEME. Would exceed by: " . number_format($newBalance - $maxBalance, 2) . " CMEME.",
+                        'current_balance' => $currentBalance,
+                        'requested_amount' => $amount,
+                        'new_balance' => $newBalance,
+                        'max_balance' => $maxBalance
+                    ], 400);
+                }
+            }
         } else {
             // subtract operation
             $newBalance = max(0, $currentBalance - $amount);
@@ -522,6 +544,53 @@ public function updateBalance(Request $request, $id)
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to export users',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get top users by balance (CMEME or USDC)
+     */
+    public function getTopUsers(Request $request)
+    {
+        try {
+            $currency = $request->get('currency', 'cmeme'); // 'cmeme' or 'usdc'
+            $limit = $request->get('limit', 100); // Default to top 100
+            
+            $balanceField = $currency === 'usdc' ? 'usdc_balance' : 'token_balance';
+            
+            $query = User::with(['currentKyc'])
+                ->orderBy($balanceField, 'desc')
+                ->where($balanceField, '>', 0); // Only users with balance > 0
+            
+            $users = $query->limit($limit)->get();
+            
+            // Get stats
+            $totalUsers = User::count();
+            $usersWithBalance = User::where($balanceField, '>', 0)->count();
+            $totalBalance = User::sum($balanceField);
+            $avgBalance = $usersWithBalance > 0 ? $totalBalance / $usersWithBalance : 0;
+            
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'users' => $users,
+                    'stats' => [
+                        'total_users' => $totalUsers,
+                        'users_with_balance' => $usersWithBalance,
+                        'total_balance' => $totalBalance,
+                        'average_balance' => $avgBalance,
+                        'currency' => strtoupper($currency === 'usdc' ? 'USDC' : 'CMEME')
+                    ]
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('UserController getTopUsers error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch top users',
                 'error' => $e->getMessage()
             ], 500);
         }

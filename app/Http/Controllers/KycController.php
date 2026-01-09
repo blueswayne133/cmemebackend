@@ -303,8 +303,22 @@ class KycController extends Controller
                 $usdcReward = 0.1;
 
                 // Add CMEME tokens immediately to referrer's balance
-                $referrer->increment('token_balance', $cmemeReward);
-                $referrer->increment('referral_token_balance', $cmemeReward);
+                // Check maximum balance before adding referral reward
+                $maxBalance = \App\Models\Setting::getWalletValue('max_cmeme_balance', 100000);
+                $currentBalance = $referrer->token_balance ?? 0;
+                $newBalance = $currentBalance + $cmemeReward;
+
+                if ($newBalance <= $maxBalance) {
+                    $referrer->increment('token_balance', $cmemeReward);
+                    $referrer->increment('referral_token_balance', $cmemeReward);
+                } else {
+                    // Only add up to max limit
+                    $allowedAmount = max(0, $maxBalance - $currentBalance);
+                    if ($allowedAmount > 0) {
+                        $referrer->increment('token_balance', $allowedAmount);
+                        $referrer->increment('referral_token_balance', $allowedAmount);
+                    }
+                }
                 
                 // Add USDC to referrer's pending balance (requires claiming)
                 $referrer->increment('referral_usdc_balance', $usdcReward);

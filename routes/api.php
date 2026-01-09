@@ -230,9 +230,12 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
 
     // Users Management
     Route::get('/users', [UserController::class, 'index']);
-    Route::get('/users/{id}', [UserController::class, 'show']);
-    Route::put('/users/{id}', [UserController::class, 'update']);
-    Route::delete('/users/{id}', [UserController::class, 'destroy']);
+    
+    // Top Users by Balance (must be before /users/{id} to avoid route conflict)
+    Route::get('/users/top', [UserController::class, 'getTopUsers']);
+    
+    // Export
+    Route::get('/users/export', [UserController::class, 'exportUsers']);
     
     // User Actions
     Route::post('/users/{id}/verify', [UserController::class, 'verify']);
@@ -242,10 +245,11 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     // User Data
     Route::get('/users/{id}/transactions', [UserController::class, 'getUserTransaction']);
     Route::get('/users/{id}/trades', [UserController::class, 'getUserTrades']);
-
     
-    // Export
-    Route::get('/users/export', [UserController::class, 'exportUsers']);
+    // User CRUD (must be after specific routes)
+    Route::get('/users/{id}', [UserController::class, 'show']);
+    Route::put('/users/{id}', [UserController::class, 'update']);
+    Route::delete('/users/{id}', [UserController::class, 'destroy']);
 
 
  
