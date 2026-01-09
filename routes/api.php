@@ -358,10 +358,6 @@ Route::prefix('admin/referrals')->group(function () {
 
     // Change password
     Route::post('/change-password', [AdminController::class, 'changePassword']);
-    });
-
-    // Change password route
-    Route::post('admin/change-password', [AdminController::class, 'changePassword']);
 
 
 
