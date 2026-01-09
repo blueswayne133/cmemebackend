@@ -272,15 +272,29 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::post('/wallets/{id}/status', [WalletController::class, 'updateWalletStatus']);
     Route::post('/wallets/{id}/bonus', [WalletController::class, 'grantBonus']);
 
-    // Settings
-    Route::get('/settings/system', [SettingsController::class, 'getSystemSettings']);
-    Route::post('/settings/system', [SettingsController::class, 'updateSystemSettings']);
-    Route::get('/settings/tasks', [SettingsController::class, 'getTaskSettings']);
-    Route::post('/settings/tasks', [SettingsController::class, 'createTask']);
-    Route::put('/settings/tasks/{id}', [SettingsController::class, 'updateTask']);
-    Route::get('/settings/admins', [SettingsController::class, 'getAdminUsers']);
-    Route::post('/settings/admins', [SettingsController::class, 'createAdmin']);
-    Route::put('/settings/admins/{id}', [SettingsController::class, 'updateAdmin']);
+    // Settings Management
+    Route::prefix('settings')->group(function () {
+        Route::get('/', [SettingsController::class, 'getSettings']);
+        Route::post('/', [SettingsController::class, 'saveSettings']);
+        Route::get('/system', [SettingsController::class, 'getSystemSettings']);
+        Route::post('/system', [SettingsController::class, 'updateSystemSettings']);
+        Route::get('/tasks', [SettingsController::class, 'getTaskSettings']);
+        Route::post('/tasks', [SettingsController::class, 'createTask']);
+        Route::put('/tasks/{id}', [SettingsController::class, 'updateTask']);
+        Route::get('/admins', [SettingsController::class, 'getAdminUsers']);
+        Route::post('/admins', [SettingsController::class, 'createAdmin']);
+        Route::put('/admins/{id}', [SettingsController::class, 'updateAdmin']);
+        Route::post('/email-test', [SettingsController::class, 'testEmail']);
+    });
+
+    // Admin management routes (for managing other admins)
+    Route::prefix('admins')->group(function () {
+        Route::get('/', [AdminController::class, 'index']);
+        Route::post('/', [AdminController::class, 'store']);
+        Route::put('/{id}', [AdminController::class, 'update']);
+        Route::delete('/{id}', [AdminController::class, 'destroy']);
+        Route::post('/{id}/toggle-status', [AdminController::class, 'toggleStatus']);
+    });
 
 
     // Deposit Management Routes
@@ -302,86 +316,45 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::delete('/{id}', [AdminKycController::class, 'destroy']);
         Route::get('/{id}/document/{documentType}', [AdminKycController::class, 'getDocument']);
     });
-});
 
-
-// Add these routes to your admin section in api.php
-// Add to admin routes
-Route::prefix('admin/tasks')->group(function () {
-    Route::get('/', [AdminTaskController::class, 'index']);
-    Route::post('/', [AdminTaskController::class, 'create']);
-    Route::get('/stats', [AdminTaskController::class, 'getTaskStats']);
-    Route::get('/types', [AdminTaskController::class, 'getTaskTypes']);
-    Route::get('/engagement', [AdminTaskController::class, 'getEngagementTasks']);
-    Route::get('/engagement/completions', [AdminTaskController::class, 'getEngagementCompletions']);
-    Route::get('/engagement/completions/{taskId}', [AdminTaskController::class, 'getEngagementCompletions']);
-    Route::get('/{taskId}', [AdminTaskController::class, 'show']);
-    Route::put('/{taskId}', [AdminTaskController::class, 'update']);
-    Route::delete('/{taskId}', [AdminTaskController::class, 'delete']);
-    Route::post('/{taskId}/toggle-status', [AdminTaskController::class, 'toggleStatus']);
-    Route::get('/{taskId}/progress', [AdminTaskController::class, 'getTaskProgress']);
-    Route::post('/{taskId}/reset-user', [AdminTaskController::class, 'resetUserTask']);
-    Route::post('/{taskId}/force-complete', [AdminTaskController::class, 'forceCompleteTask']);
-});
-
-
-
-Route::prefix('admin/referrals')->group(function () {
-    Route::get('/', [\App\Http\Controllers\Admin\AdminReferralController::class, 'index']);
-    Route::get('/platform-stats', [\App\Http\Controllers\Admin\AdminReferralController::class, 'getPlatformReferralStats']);
-    Route::get('/user/{userId}', [\App\Http\Controllers\Admin\AdminReferralController::class, 'getUserReferralStats']);
-    Route::post('/user/{userId}/toggle-usdc-claiming', [\App\Http\Controllers\Admin\AdminReferralController::class, 'toggleUsdcClaiming']);
-    Route::post('/bulk-update-usdc-claiming', [\App\Http\Controllers\Admin\AdminReferralController::class, 'bulkUpdateUsdcClaiming']);
-});
-
-
-
-
-
-   
-    // Admin management routes
-    Route::prefix('admin')->group(function () {
-        Route::get('/', [AdminController::class, 'index']);
-        Route::post('/', [AdminController::class, 'store']);
-        Route::put('/{id}', [AdminController::class, 'update']);
-        Route::delete('/{id}', [AdminController::class, 'destroy']);
-        Route::post('/{id}/toggle-status', [AdminController::class, 'toggleStatus']);
-
-
-
-            // Settings Management
-        Route::prefix('settings')->group(function () {
-        Route::get('/', [SettingsController::class, 'getSettings']);
-        Route::post('/', [SettingsController::class, 'saveSettings']);
-        Route::post('/email-test', [SettingsController::class, 'testEmail']);
+    // Task Management Routes
+    Route::prefix('tasks')->group(function () {
+        Route::get('/', [AdminTaskController::class, 'index']);
+        Route::post('/', [AdminTaskController::class, 'create']);
+        Route::get('/stats', [AdminTaskController::class, 'getTaskStats']);
+        Route::get('/types', [AdminTaskController::class, 'getTaskTypes']);
+        Route::get('/engagement', [AdminTaskController::class, 'getEngagementTasks']);
+        Route::get('/engagement/completions', [AdminTaskController::class, 'getEngagementCompletions']);
+        Route::get('/engagement/completions/{taskId}', [AdminTaskController::class, 'getEngagementCompletions']);
+        Route::get('/{taskId}', [AdminTaskController::class, 'show']);
+        Route::put('/{taskId}', [AdminTaskController::class, 'update']);
+        Route::delete('/{taskId}', [AdminTaskController::class, 'delete']);
+        Route::post('/{taskId}/toggle-status', [AdminTaskController::class, 'toggleStatus']);
+        Route::get('/{taskId}/progress', [AdminTaskController::class, 'getTaskProgress']);
+        Route::post('/{taskId}/reset-user', [AdminTaskController::class, 'resetUserTask']);
+        Route::post('/{taskId}/force-complete', [AdminTaskController::class, 'forceCompleteTask']);
     });
 
-    // Change password
-    Route::post('/change-password', [AdminController::class, 'changePassword']);
+    // Referral Management Routes
+    Route::prefix('referrals')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\AdminReferralController::class, 'index']);
+        Route::get('/platform-stats', [\App\Http\Controllers\Admin\AdminReferralController::class, 'getPlatformReferralStats']);
+        Route::get('/user/{userId}', [\App\Http\Controllers\Admin\AdminReferralController::class, 'getUserReferralStats']);
+        Route::post('/user/{userId}/toggle-usdc-claiming', [\App\Http\Controllers\Admin\AdminReferralController::class, 'toggleUsdcClaiming']);
+        Route::post('/bulk-update-usdc-claiming', [\App\Http\Controllers\Admin\AdminReferralController::class, 'bulkUpdateUsdcClaiming']);
+    });
 
-
-
-
-    
-
-
-  // P2P Management Routes
-Route::prefix('admin/p2p')->group(function () {
-    // Stats
-    Route::get('/stats', [AdminP2PController::class, 'getStats']);
-    
-    // Trades
-    Route::get('/trades', [AdminP2PController::class, 'getTrades']);
-    Route::get('/trades/{tradeId}', [AdminP2PController::class, 'getTradeDetails']);
-    Route::post('/trades/{tradeId}/cancel', [AdminP2PController::class, 'cancelTrade']);
-    Route::post('/trades/{tradeId}/force-complete', [AdminP2PController::class, 'forceCompleteTrade']);
-    
-        // Trade History & Analytics
-    Route::get('/history', [AdminP2PController::class, 'getTradeHistory']);
-    Route::get('/analytics', [AdminP2PController::class, 'getTradeAnalytics']);
-    Route::get('/export-history', [AdminP2PController::class, 'exportTradeHistory']);
-    
-    // Disputes
-    Route::post('/disputes/{tradeId}/resolve', [AdminP2PController::class, 'resolveDispute']);
-    Route::post('/trades/{tradeId}/force-cancel-refund', [AdminP2PController::class, 'adminForceCancelTrade']);
+    // P2P Management Routes
+    Route::prefix('p2p')->group(function () {
+        Route::get('/stats', [AdminP2PController::class, 'getStats']);
+        Route::get('/trades', [AdminP2PController::class, 'getTrades']);
+        Route::get('/trades/{tradeId}', [AdminP2PController::class, 'getTradeDetails']);
+        Route::post('/trades/{tradeId}/cancel', [AdminP2PController::class, 'cancelTrade']);
+        Route::post('/trades/{tradeId}/force-complete', [AdminP2PController::class, 'forceCompleteTrade']);
+        Route::get('/history', [AdminP2PController::class, 'getTradeHistory']);
+        Route::get('/analytics', [AdminP2PController::class, 'getTradeAnalytics']);
+        Route::get('/export-history', [AdminP2PController::class, 'exportTradeHistory']);
+        Route::post('/disputes/{tradeId}/resolve', [AdminP2PController::class, 'resolveDispute']);
+        Route::post('/trades/{tradeId}/force-cancel-refund', [AdminP2PController::class, 'adminForceCancelTrade']);
+    });
 });

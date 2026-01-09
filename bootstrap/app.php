@@ -23,6 +23,12 @@ return Application::configure(basePath: dirname(__DIR__))
             'auth:admin',
             'admin',
         ]);
+
+        // Enable CORS for API routes (Laravel 11/12 handles this automatically via config/cors.php)
+        // But we ensure it's enabled for all API routes
+        $middleware->api(prepend: [
+            \Illuminate\Http\Middleware\HandleCors::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

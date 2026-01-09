@@ -141,7 +141,7 @@ class User extends Authenticatable
     /**
      * Update KYC status and link current KYC
      */
-    public function updateKycStatus(string $status, KycVerification $kyc = null): bool
+    public function updateKycStatus(string $status, ?KycVerification $kyc = null): bool
     {
         $updateData = ['kyc_status' => $status];
         
